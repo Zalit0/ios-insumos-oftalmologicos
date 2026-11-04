@@ -92,3 +92,28 @@ Genera `instalador\Output\Instalar IOS.exe`, que:
 Instalar en la PC, cargar un mes en paralelo con el Excel, y confirmar que
 los totales (`Resumen mensual`) y la caja (`Caja diaria`) coinciden con los
 de la planilla.
+
+## Publicar una actualización (Ayuda → Buscar actualización)
+
+La app chequea actualizaciones contra los Releases del repositorio
+[Zalit0/ios-insumos-oftalmologicos](https://github.com/Zalit0/ios-insumos-oftalmologicos)
+en GitHub (público, para que la app no necesite ninguna clave guardada).
+Después de compilar una versión nueva (pasos 1 y 2 de arriba):
+
+1. Subir `ios/version.py` (`IOS_VERSION`) a la versión nueva, por ejemplo
+   `"1.3.0"`, y hacer commit + push.
+2. Crear el Release con el instalador adjunto (necesita `gh` autenticado:
+   `gh auth login`):
+
+   ```bash
+   git push
+   gh release create v1.3.0 "instalador\Output\Instalar IOS.exe" --title "v1.3.0" --notes "Qué cambió en esta versión."
+   ```
+
+   El tag (`v1.3.0`) tiene que empezar con los mismos números que
+   `IOS_VERSION` — es lo único que la app compara para saber si hay una
+   versión más nueva.
+3. Cualquier instalación anterior, al apretar Ayuda → Buscar actualización,
+   va a detectar la versión nueva, descargar ese instalador y ejecutarlo
+   (la app se cierra sola para que la instalación pueda reemplazar los
+   archivos).
