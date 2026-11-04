@@ -1,0 +1,16 @@
+# Etapa 1: solo se necesita pytest (sqlite3 es parte de la librería estándar).
+# Las siguientes se usan a partir de etapas posteriores y quedan documentadas
+# aquí para no tener que redescubrirlas:
+pytest>=8.0
+
+# Etapa 2+ (interfaz)
+PySide6>=6.6
+
+# Etapa 4+ (recibos, estados de cuenta, cierres en PDF)
+reportlab>=4.0
+
+# Etapa 9 (importación/exportación de Excel)
+openpyxl>=3.1
+
+# Etapa 10 (empaquetado)
+pyinstaller>=6.3

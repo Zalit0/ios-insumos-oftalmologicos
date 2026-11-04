@@ -1,0 +1,17 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+*.db
+
+# Empaquetado (etapa 10): se generan con PyInstaller / Inno Setup, no se versionan.
+build/
+dist/
+*.spec
+instalador/Output/
+
+# Datos reales del negocio: el repositorio es público, estos archivos no
+# se versionan nunca (planillas mensuales reales y PDFs de muestra
+# generados con la base de datos de producción).
+docs/*.xlsx
+/muestra_*.pdf
