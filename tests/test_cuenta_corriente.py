@@ -427,6 +427,34 @@ def test_estado_de_cuenta_solo_pendientes_excluye_los_comprobantes_cancelados(
     assert estado.saldo_consolidado == Decimal("750")
 
 
+def test_estado_de_cuenta_solo_pendientes_filtra_por_periodo(
+    conexion, rto_id, formas_pago, croma
+):
+    """Con fecha_desde/fecha_hasta, solo entran los comprobantes
+    pendientes emitidos en ese período, y el saldo mostrado es la suma
+    de lo listado (no el total histórico del cliente)."""
+    cliente_id, sucursales = croma
+    pendiente_marzo = servicio_comprobantes.alta_comprobante(
+        conexion, rto_id, "1", "2024-03-05", cliente_id, sucursales["Croma"], Decimal("1000")
+    )
+    pendiente_abril = servicio_comprobantes.alta_comprobante(
+        conexion, rto_id, "2", "2024-04-10", cliente_id, sucursales["Croma"], Decimal("500")
+    )
+
+    estado_marzo = estado_de_cuenta_solo_pendientes(
+        conexion, cliente_id, fecha_desde="2024-03-01", fecha_hasta="2024-03-31"
+    )
+    croma_marzo = next(s for s in estado_marzo.sucursales if s.nombre == "Croma")
+    assert [c.comprobante_id for c in croma_marzo.comprobantes] == [pendiente_marzo]
+    assert croma_marzo.saldo == Decimal("750.00")
+    assert estado_marzo.saldo_consolidado == Decimal("750.00")  # no incluye el de abril
+
+    estado_sin_filtro = estado_de_cuenta_solo_pendientes(conexion, cliente_id)
+    croma_todo = next(s for s in estado_sin_filtro.sucursales if s.nombre == "Croma")
+    assert {c.comprobante_id for c in croma_todo.comprobantes} == {pendiente_marzo, pendiente_abril}
+    assert estado_sin_filtro.saldo_consolidado == Decimal("1125.00")
+
+
 def test_desglose_pagos_comprobante_de_septiembre_cancelado_en_octubre(
     conexion, rto_id, formas_pago, croma
 ):

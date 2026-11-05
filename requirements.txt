@@ -14,3 +14,7 @@ openpyxl>=3.1
 
 # Etapa 10 (empaquetado)
 pyinstaller>=6.3
+
+# Ayuda → Buscar actualización: certificados CA propios para verificar
+# HTTPS sin depender del almacén de Windows (puede estar desactualizado).
+certifi>=2024.0

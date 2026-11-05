@@ -105,7 +105,7 @@ class PaginaRecibos(QWidget):
         self._etiqueta_total.setStyleSheet("font-weight: bold;")
         pie.addWidget(self._etiqueta_total)
         pie.addStretch(1)
-        boton_pdf = QPushButton("Ver PDF del recibo seleccionado")
+        boton_pdf = QPushButton("Reimprimir recibo seleccionado")
         boton_pdf.clicked.connect(self._exportar_pdf_seleccionado)
         pie.addWidget(boton_pdf)
         layout_general.addLayout(pie)

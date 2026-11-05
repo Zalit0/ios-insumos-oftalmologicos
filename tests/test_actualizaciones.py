@@ -80,6 +80,16 @@ def test_sin_conexion_levanta_error_actualizacion(monkeypatch):
         buscar_actualizacion("1.1.0")
 
 
+def test_error_403_de_github_levanta_error_actualizacion_especifico(monkeypatch):
+    def _falla(*a, **k):
+        raise urllib.error.HTTPError("url", 403, "rate limit", {}, None)
+
+    monkeypatch.setattr("urllib.request.urlopen", _falla)
+
+    with pytest.raises(ErrorActualizacion, match="límite"):
+        buscar_actualizacion("1.1.0")
+
+
 def test_release_sin_instalador_adjunto_levanta_error_actualizacion(monkeypatch):
     monkeypatch.setattr(
         "urllib.request.urlopen", lambda *a, **k: _RespuestaFalsa(_release("v1.2.0", assets=[]))

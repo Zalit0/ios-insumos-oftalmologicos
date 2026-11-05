@@ -11,16 +11,32 @@ es la única forma en que esta función sabe si hay algo más nuevo.
 from __future__ import annotations
 
 import json
+import ssl
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
+import certifi
+
 REPOSITORIO = "Zalit0/ios-insumos-oftalmologicos"
 URL_ULTIMO_RELEASE = f"https://api.github.com/repos/{REPOSITORIO}/releases/latest"
-TIMEOUT_SEGUNDOS = 10
+TIMEOUT_SEGUNDOS = 15
 TAMANIO_BLOQUE = 256 * 1024
+
+# Un .exe empaquetado con PyInstaller puede correr en una PC cuyo almacén
+# de certificados de Windows esté desactualizado; en vez de depender de
+# él, se verifica siempre contra el paquete de certificados de certifi
+# (el mismo en todas las instalaciones, se actualiza con la librería).
+_CONTEXTO_SSL = ssl.create_default_context(cafile=certifi.where())
+
+
+def _abrir(url: str, timeout: float = TIMEOUT_SEGUNDOS):
+    """``urlopen`` con el contexto SSL de certifi y un User-Agent propio
+    (la API de GitHub rechaza pedidos sin uno)."""
+    pedido = urllib.request.Request(url, headers={"User-Agent": "IOS-actualizador"})
+    return urllib.request.urlopen(pedido, timeout=timeout, context=_CONTEXTO_SSL)
 
 
 class ErrorActualizacion(Exception):
@@ -49,11 +65,21 @@ def buscar_actualizacion(version_actual: str) -> InfoActualizacion | None:
     """Devuelve la info del último release si es más nuevo que
     ``version_actual``, o ``None`` si ya está al día."""
     try:
-        with urllib.request.urlopen(URL_ULTIMO_RELEASE, timeout=TIMEOUT_SEGUNDOS) as respuesta:
+        with _abrir(URL_ULTIMO_RELEASE) as respuesta:
             datos = json.loads(respuesta.read().decode("utf-8"))
-    except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError) as error:
+    except urllib.error.HTTPError as error:
+        if error.code == 403:
+            raise ErrorActualizacion(
+                "GitHub rechazó la consulta (403): puede ser el límite de consultas por "
+                "hora sin iniciar sesión. Probá de nuevo más tarde."
+            ) from error
         raise ErrorActualizacion(
-            "No se pudo conectar para buscar actualizaciones. Revisá tu conexión a internet."
+            f"El servidor de actualizaciones respondió con un error ({error.code})."
+        ) from error
+    except (urllib.error.URLError, TimeoutError, OSError) as error:
+        raise ErrorActualizacion(
+            f"No se pudo conectar para buscar actualizaciones. Revisá tu conexión a "
+            f"internet. ({error})"
         ) from error
     except json.JSONDecodeError as error:
         raise ErrorActualizacion(
@@ -91,7 +117,7 @@ def descargar_instalador(
     llamada levanta una excepción (por ejemplo, para cancelar), se borra el
     archivo parcial y la excepción se propaga."""
     try:
-        with urllib.request.urlopen(url, timeout=TIMEOUT_SEGUNDOS) as respuesta:
+        with _abrir(url) as respuesta:
             total = int(respuesta.headers.get("Content-Length", 0))
             leido = 0
             with open(destino, "wb") as archivo:

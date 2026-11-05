@@ -323,7 +323,12 @@ class PaginaCuentaCorriente(QWidget):
 
         modo = self._campo_modo_pdf.currentData()
         if modo == MODO_PENDIENTES:
-            generar_pdf_estado_cuenta_pendientes(self.conexion, self._cliente_id, ruta)
+            if self._modo_periodo:
+                generar_pdf_estado_cuenta_pendientes(
+                    self.conexion, self._cliente_id, ruta, self._fecha_desde(), self._fecha_hasta()
+                )
+            else:
+                generar_pdf_estado_cuenta_pendientes(self.conexion, self._cliente_id, ruta)
         elif modo == MODO_HISTORIAL:
             generar_pdf_historial_movimientos(
                 self.conexion, self._cliente_id, self._fecha_desde(), self._fecha_hasta(), ruta

@@ -117,19 +117,32 @@ def generar_pdf_estado_cuenta(
 
 
 def generar_pdf_estado_cuenta_pendientes(
-    conexion: sqlite3.Connection, cliente_id: int, ruta_salida: Path | str
+    conexion: sqlite3.Connection,
+    cliente_id: int,
+    ruta_salida: Path | str,
+    fecha_desde: str | None = None,
+    fecha_hasta: str | None = None,
 ) -> Path:
     """Modalidad "Solo comprobantes con saldo pendiente": la
     predeterminada para gestionar cobranzas. Solo lista, por sucursal,
     los remitos que todavía deben algo a hoy — número, fecha de
     emisión, importe original, pagos ya imputados y saldo pendiente —
-    sin mezclarlos con los ya cancelados."""
+    sin mezclarlos con los ya cancelados. Si se indica
+    ``fecha_desde``/``fecha_hasta``, se limita a los comprobantes
+    emitidos en ese período (y el saldo mostrado es la suma de esos,
+    no el total histórico del cliente)."""
     cliente = datos_clientes.obtener_cliente(conexion, cliente_id)
     if cliente is None:
         raise ValueError(f"No existe el cliente {cliente_id}.")
-    estado = estado_de_cuenta_solo_pendientes(conexion, cliente_id)
+    estado = estado_de_cuenta_solo_pendientes(conexion, cliente_id, fecha_desde, fecha_hasta)
 
-    subtitulo = f"{cliente['nombre']} — comprobantes pendientes al {formato_fecha(date.today())}"
+    if fecha_desde is not None and fecha_hasta is not None:
+        subtitulo = (
+            f"{cliente['nombre']} — comprobantes pendientes del "
+            f"{formato_fecha(fecha_desde)} al {formato_fecha(fecha_hasta)}"
+        )
+    else:
+        subtitulo = f"{cliente['nombre']} — comprobantes pendientes al {formato_fecha(date.today())}"
     elementos = encabezado("Estado de cuenta — Solo pendientes", subtitulo)
 
     total_comprobantes_pendientes = 0

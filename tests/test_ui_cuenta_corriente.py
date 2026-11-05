@@ -155,6 +155,57 @@ def test_exportar_en_modo_pendientes_llama_al_reporte_de_pendientes(
     assert llamadas == ["pendientes"]
 
 
+def test_exportar_pendientes_con_periodo_activo_pasa_las_fechas(
+    monkeypatch, app, conexion, rto_id, tmp_path
+):
+    """Si hay un período consultado (Usar mes / Consultar), el PDF de
+    pendientes tiene que filtrar por esas fechas, no mostrar todo lo
+    pendiente histórico."""
+    pagina = _preparar_pagina_para_exportar(conexion, rto_id, tmp_path)
+
+    ruta_salida = tmp_path / "estado.pdf"
+    monkeypatch.setattr(
+        QFileDialog, "getSaveFileName", staticmethod(lambda *a, **k: (str(ruta_salida), ""))
+    )
+    monkeypatch.setattr(QMessageBox, "information", staticmethod(lambda *a, **k: QMessageBox.Ok))
+
+    llamadas = []
+    monkeypatch.setattr(
+        "ios.ui.pages.cuenta_corriente.generar_pdf_estado_cuenta_pendientes",
+        lambda *a: llamadas.append(a),
+    )
+
+    pagina._exportar_pdf()
+
+    assert len(llamadas) == 1
+    args = llamadas[0]
+    assert args[-2:] == ("2024-03-01", "2024-03-31")
+
+
+def test_exportar_pendientes_en_modo_ver_todo_no_pasa_fechas(
+    monkeypatch, app, conexion, rto_id, tmp_path
+):
+    pagina = _preparar_pagina_para_exportar(conexion, rto_id, tmp_path)
+    pagina._ver_todo()
+
+    ruta_salida = tmp_path / "estado.pdf"
+    monkeypatch.setattr(
+        QFileDialog, "getSaveFileName", staticmethod(lambda *a, **k: (str(ruta_salida), ""))
+    )
+    monkeypatch.setattr(QMessageBox, "information", staticmethod(lambda *a, **k: QMessageBox.Ok))
+
+    llamadas = []
+    monkeypatch.setattr(
+        "ios.ui.pages.cuenta_corriente.generar_pdf_estado_cuenta_pendientes",
+        lambda *a: llamadas.append(a),
+    )
+
+    pagina._exportar_pdf()
+
+    assert len(llamadas) == 1
+    assert len(llamadas[0]) == 3  # conexion, cliente_id, ruta — sin fechas
+
+
 def test_exportar_en_modo_completo_llama_al_reporte_de_periodo(
     monkeypatch, app, conexion, rto_id, tmp_path
 ):

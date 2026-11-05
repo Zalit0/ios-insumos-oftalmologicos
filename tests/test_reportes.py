@@ -123,6 +123,17 @@ def test_pdf_estado_cuenta_pendientes_se_genera(conexion, escenario, tmp_path):
     assert ruta.stat().st_size > 0
 
 
+def test_pdf_estado_cuenta_pendientes_respeta_el_filtro_de_fecha(conexion, escenario, tmp_path):
+    # El escenario tiene un remito del 2024-01-01 (fuera de marzo) que quedó
+    # pendiente: filtrando por marzo no debería aparecer en el PDF.
+    ruta = generar_pdf_estado_cuenta_pendientes(
+        conexion, escenario["cliente_id"], tmp_path / "pendientes_marzo.pdf",
+        "2024-03-01", "2024-03-31",
+    )
+    assert ruta.exists()
+    assert ruta.stat().st_size > 0
+
+
 def test_pdf_historial_movimientos_se_genera(conexion, escenario, tmp_path):
     ruta = generar_pdf_historial_movimientos(
         conexion, escenario["cliente_id"], "2024-01-01", "2024-03-31", tmp_path / "historial.pdf"

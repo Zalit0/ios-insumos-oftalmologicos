@@ -103,31 +103,55 @@ def estado_de_cuenta_cliente(conexion: sqlite3.Connection, cliente_id: int) -> E
 
 
 def estado_de_cuenta_solo_pendientes(
-    conexion: sqlite3.Connection, cliente_id: int
+    conexion: sqlite3.Connection,
+    cliente_id: int,
+    fecha_desde: str | None = None,
+    fecha_hasta: str | None = None,
 ) -> EstadoCuentaCliente:
     """La misma información que :func:`estado_de_cuenta_cliente`, pero
     con cada sucursal filtrada a solo los comprobantes con saldo
     pendiente (> 0) a hoy: el modo de reporte pensado para gestionar
     cobranzas, que no mezcla los comprobantes ya cancelados
-    (docs/AJUSTES_V1.1.md, rediseño del estado de cuenta). El saldo de
-    la sucursal y el consolidado no cambian: siguen siendo el total
-    real, solo se filtra qué filas se listan."""
+    (docs/AJUSTES_V1.1.md, rediseño del estado de cuenta). Si se indica
+    ``fecha_desde``/``fecha_hasta``, además se filtra por la fecha de
+    emisión del comprobante: solo entran los del período elegido, y el
+    saldo de la sucursal y el consolidado pasan a ser la suma de lo
+    efectivamente listado (no el total histórico). Sin esos parámetros,
+    el comportamiento es el de siempre: todo lo pendiente a hoy, y el
+    saldo es el total real del cliente."""
     estado = estado_de_cuenta_cliente(conexion, cliente_id)
     sucursales_pendientes = [
         EstadoCuentaSucursal(
             sucursal_id=sucursal.sucursal_id,
             nombre=sucursal.nombre,
-            comprobantes=[c for c in sucursal.comprobantes if c.saldo > 0],
+            comprobantes=[
+                c for c in sucursal.comprobantes
+                if c.saldo > 0
+                and (fecha_desde is None or c.fecha >= fecha_desde)
+                and (fecha_hasta is None or c.fecha <= fecha_hasta)
+            ],
             saldo=sucursal.saldo,
         )
         for sucursal in estado.sucursales
     ]
+
+    if fecha_desde is None and fecha_hasta is None:
+        saldo_comprobantes = estado.saldo_comprobantes
+        saldo_consolidado = estado.saldo_consolidado
+    else:
+        for sucursal in sucursales_pendientes:
+            sucursal.saldo = sum((c.saldo for c in sucursal.comprobantes), Decimal(0))
+        saldo_comprobantes = sum((s.saldo for s in sucursales_pendientes), Decimal(0))
+        saldo_consolidado = calcular_saldo_cliente(
+            (s.saldo for s in sucursales_pendientes), estado.saldo_a_favor
+        )
+
     return EstadoCuentaCliente(
         cliente_id=estado.cliente_id,
         sucursales=sucursales_pendientes,
-        saldo_comprobantes=estado.saldo_comprobantes,
+        saldo_comprobantes=saldo_comprobantes,
         saldo_a_favor=estado.saldo_a_favor,
-        saldo_consolidado=estado.saldo_consolidado,
+        saldo_consolidado=saldo_consolidado,
     )
 
 
