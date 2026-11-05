@@ -4,11 +4,13 @@ descarga el instalador si hay una versión más nueva."""
 from __future__ import annotations
 
 import json
+import ssl
 import urllib.error
 from pathlib import Path
 
 import pytest
 
+from ios.services import actualizaciones
 from ios.services.actualizaciones import (
     ErrorActualizacion,
     buscar_actualizacion,
@@ -68,6 +70,29 @@ def test_version_anterior_en_el_release_devuelve_none(monkeypatch):
     monkeypatch.setattr("urllib.request.urlopen", lambda *a, **k: _RespuestaFalsa(_release("v1.0.0")))
 
     assert buscar_actualizacion("1.1.0") is None
+
+
+def test_si_certifi_falla_por_certificado_reintenta_con_el_sistema(monkeypatch):
+    """Una PC con una raíz propia instalada en Windows (por ejemplo, un
+    antivirus que inspecciona HTTPS) puede no estar en el paquete de
+    certifi: ahí falla por certificado y hay que reintentar con el
+    almacén del sistema en vez de darse por vencido."""
+    llamadas = []
+
+    def _urlopen(pedido, timeout=None, context=None):
+        llamadas.append(context)
+        if context is actualizaciones._CONTEXTO_CERTIFI:
+            raise urllib.error.URLError(
+                ssl.SSLCertVerificationError("unable to get local issuer certificate")
+            )
+        return _RespuestaFalsa(_release("v1.2.0"))
+
+    monkeypatch.setattr("urllib.request.urlopen", _urlopen)
+
+    info = buscar_actualizacion("1.1.0")
+
+    assert info is not None
+    assert llamadas == [actualizaciones._CONTEXTO_CERTIFI, actualizaciones._CONTEXTO_SISTEMA]
 
 
 def test_sin_conexion_levanta_error_actualizacion(monkeypatch):

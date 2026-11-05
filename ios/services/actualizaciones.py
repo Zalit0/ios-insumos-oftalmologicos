@@ -25,18 +25,28 @@ URL_ULTIMO_RELEASE = f"https://api.github.com/repos/{REPOSITORIO}/releases/lates
 TIMEOUT_SEGUNDOS = 15
 TAMANIO_BLOQUE = 256 * 1024
 
-# Un .exe empaquetado con PyInstaller puede correr en una PC cuyo almacén
-# de certificados de Windows esté desactualizado; en vez de depender de
-# él, se verifica siempre contra el paquete de certificados de certifi
-# (el mismo en todas las instalaciones, se actualiza con la librería).
-_CONTEXTO_SSL = ssl.create_default_context(cafile=certifi.where())
+# Dos fuentes de certificados, porque cualquiera de las dos puede faltar
+# según la PC: el almacén de Windows puede estar desactualizado (típico en
+# un .exe empaquetado), pero el paquete de certifi puede no incluir una
+# raíz propia que sí está instalada en Windows (por ejemplo, la de un
+# antivirus que inspecciona HTTPS). Se prueba primero con certifi — la
+# falla más común — y si da error de certificado, se reintenta con el
+# almacén del sistema antes de darse por vencido.
+_CONTEXTO_CERTIFI = ssl.create_default_context(cafile=certifi.where())
+_CONTEXTO_SISTEMA = ssl.create_default_context()
 
 
 def _abrir(url: str, timeout: float = TIMEOUT_SEGUNDOS):
-    """``urlopen`` con el contexto SSL de certifi y un User-Agent propio
-    (la API de GitHub rechaza pedidos sin uno)."""
+    """``urlopen`` con un User-Agent propio (la API de GitHub rechaza
+    pedidos sin uno), probando los certificados de certifi y, si fallan
+    por verificación, los del sistema."""
     pedido = urllib.request.Request(url, headers={"User-Agent": "IOS-actualizador"})
-    return urllib.request.urlopen(pedido, timeout=timeout, context=_CONTEXTO_SSL)
+    try:
+        return urllib.request.urlopen(pedido, timeout=timeout, context=_CONTEXTO_CERTIFI)
+    except urllib.error.URLError as error:
+        if isinstance(error.reason, ssl.SSLCertVerificationError):
+            return urllib.request.urlopen(pedido, timeout=timeout, context=_CONTEXTO_SISTEMA)
+        raise
 
 
 class ErrorActualizacion(Exception):
