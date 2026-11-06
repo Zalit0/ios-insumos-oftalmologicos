@@ -43,7 +43,7 @@ from ios.services.caja import (
     saldo_inicial_propuesto,
     vista_previa_cierre,
 )
-from ios.ui.widgets import ajustar_columnas
+from ios.ui.widgets import CampoDecimal, ajustar_columnas
 
 ETIQUETAS_ESTADO_CIERRE = {"abierto": "Abierto", "cerrado": "Cerrado"}
 
@@ -82,7 +82,7 @@ class DialogoAbrirCaja(QDialog):
             etiqueta_propuesto = QLabel(formato_moneda(propuesto))
             etiqueta_propuesto.setFixedWidth(170)
             fila.addWidget(etiqueta_propuesto)
-            campo = QDoubleSpinBox()
+            campo = CampoDecimal()
             campo.setFixedWidth(170)
             campo.setRange(0, 99_999_999)
             campo.setDecimals(2)
@@ -194,7 +194,7 @@ class PaginaCajaDiaria(QWidget):
         self._campo_manual_tipo.addItem("Ingreso (aporte)", "ingreso")
         self._campo_manual_forma = QComboBox()
         self._campo_manual_categoria = QComboBox()
-        self._campo_manual_monto = QDoubleSpinBox()
+        self._campo_manual_monto = CampoDecimal()
         self._campo_manual_monto.setRange(0, 99_999_999)
         self._campo_manual_monto.setDecimals(2)
         self._campo_manual_concepto = QLineEdit()
@@ -212,7 +212,7 @@ class PaginaCajaDiaria(QWidget):
         form_transferencia = QFormLayout(grupo_transferencia)
         self._campo_transf_origen = QComboBox()
         self._campo_transf_destino = QComboBox()
-        self._campo_transf_monto = QDoubleSpinBox()
+        self._campo_transf_monto = CampoDecimal()
         self._campo_transf_monto.setRange(0, 99_999_999)
         self._campo_transf_monto.setDecimals(2)
         self._campo_transf_concepto = QLineEdit()
@@ -370,7 +370,7 @@ class PaginaCajaDiaria(QWidget):
             etiqueta_teorico.setFixedWidth(120)
             fila_layout.addWidget(etiqueta_teorico)
 
-            campo_arqueo = QDoubleSpinBox()
+            campo_arqueo = CampoDecimal()
             campo_arqueo.setFixedWidth(140)
             campo_arqueo.setRange(0, 99_999_999)
             campo_arqueo.setDecimals(2)

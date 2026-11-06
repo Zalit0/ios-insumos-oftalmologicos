@@ -20,7 +20,9 @@ from PySide6.QtWidgets import QApplication
 from ios.data import comprobantes as datos_comprobantes
 from ios.data.db import conectar
 from ios.services import clientes as servicio_clientes
+from ios.services import comprobantes as servicio_comprobantes
 from ios.services.cobranzas import AplicacionARemito, Pago, asentar_cobranza
+from ios.services.tipos_cristal import alta_tipo_cristal
 from ios.ui.pages.facturacion import PaginaFacturacion
 
 
@@ -315,3 +317,238 @@ def test_numero_repetido_otro_cliente_no_bloquea_y_avisa(app, conexion):
     assert len(pagina._ids_sesion) == 1
     assert pagina._etiqueta_aviso.isVisible()
     assert "Croma" in pagina._etiqueta_aviso.text()
+
+
+def test_activar_modo_detalle_muestra_grupo_y_sugiere_numero(app, conexion):
+    cliente_id = servicio_clientes.alta_cliente(conexion, nombre="Croma")
+    alta_tipo_cristal(conexion, "Orgánico blanco", Decimal("4770"))
+    pagina = PaginaFacturacion(conexion)
+    pagina.show()
+    pagina._al_elegir_cliente(cliente_id)
+
+    pagina.campo_con_detalle.setChecked(True)
+
+    assert pagina._grupo_detalle.isVisible()
+    assert pagina.campo_monto_lista.isReadOnly()
+    assert pagina.campo_numero.text() == "1"  # sin remitos cargados todavía
+    assert pagina.combo_tipo_detalle.count() == 2  # Orgánico blanco + "Otro"
+
+
+def test_activar_modo_detalle_sugiere_el_numero_siguiente_al_mayor_usado(app, conexion):
+    cliente_id = servicio_clientes.alta_cliente(conexion, nombre="Croma")
+    alta_tipo_cristal(conexion, "Orgánico blanco", Decimal("4770"))
+    pagina = PaginaFacturacion(conexion)
+    pagina.show()
+    pagina._al_elegir_cliente(cliente_id)
+    pagina.campo_numero.setText("500")  # remito manual ya cargado
+    pagina.campo_monto_lista.setValue(1000)
+    pagina._guardar()
+
+    pagina.campo_con_detalle.setChecked(True)
+
+    assert pagina.campo_numero.text() == "501"
+
+
+def test_agregar_renglon_recalcula_el_monto_lista(app, conexion):
+    cliente_id = servicio_clientes.alta_cliente(conexion, nombre="Croma")
+    alta_tipo_cristal(conexion, "Orgánico blanco", Decimal("4770"))
+    pagina = PaginaFacturacion(conexion)
+    pagina.show()
+    pagina._al_elegir_cliente(cliente_id)
+    pagina.campo_con_detalle.setChecked(True)
+
+    pagina.combo_tipo_detalle.setCurrentIndex(0)  # Orgánico blanco
+    pagina.campo_cantidad_detalle.setValue(2)
+    pagina._agregar_o_actualizar_renglon()
+
+    assert pagina.tabla_detalle_actual.rowCount() == 1
+    assert pagina.campo_monto_lista.value() == pytest.approx(4770.0)  # 2385 (medio par) x 2
+
+
+def test_agregar_renglon_sin_tocar_esferico_ni_cilindrico_queda_neutro(app, conexion):
+    cliente_id = servicio_clientes.alta_cliente(conexion, nombre="Croma")
+    alta_tipo_cristal(conexion, "Orgánico blanco", Decimal("4770"))
+    pagina = PaginaFacturacion(conexion)
+    pagina.show()
+    pagina._al_elegir_cliente(cliente_id)
+    pagina.campo_con_detalle.setChecked(True)
+    pagina.combo_tipo_detalle.setCurrentIndex(0)
+
+    pagina._agregar_o_actualizar_renglon()
+
+    assert pagina.tabla_detalle_actual.rowCount() == 1
+    assert pagina._renglones_actuales[0].graduacion == "Neutro"
+
+
+def test_agregar_renglon_con_esferico_y_cilindrico_arma_la_graduacion(app, conexion):
+    cliente_id = servicio_clientes.alta_cliente(conexion, nombre="Croma")
+    alta_tipo_cristal(conexion, "Orgánico blanco", Decimal("4770"))
+    pagina = PaginaFacturacion(conexion)
+    pagina.show()
+    pagina._al_elegir_cliente(cliente_id)
+    pagina.campo_con_detalle.setChecked(True)
+    pagina.combo_tipo_detalle.setCurrentIndex(0)
+    pagina.campo_esferico_detalle.setValue(1.25)
+    pagina.campo_cilindrico_detalle.setValue(-0.50)
+
+    pagina._agregar_o_actualizar_renglon()
+
+    assert pagina._renglones_actuales[0].graduacion == "ESF +1.25 CIL -0.50"
+
+
+def test_descripcion_y_precio_quedan_ocultos_para_un_cristal_del_catalogo(app, conexion):
+    cliente_id = servicio_clientes.alta_cliente(conexion, nombre="Croma")
+    alta_tipo_cristal(conexion, "Orgánico blanco", Decimal("4770"))
+    pagina = PaginaFacturacion(conexion)
+    pagina.show()
+    pagina._al_elegir_cliente(cliente_id)
+    pagina.campo_con_detalle.setChecked(True)
+
+    pagina.combo_tipo_detalle.setCurrentIndex(0)  # Orgánico blanco, no "Otro"
+
+    assert not pagina._formulario_renglon.isRowVisible(pagina.campo_descripcion_detalle)
+    assert not pagina._formulario_renglon.isRowVisible(pagina.campo_precio_detalle)
+
+
+def test_doble_click_en_renglon_lo_carga_para_editar(app, conexion):
+    cliente_id = servicio_clientes.alta_cliente(conexion, nombre="Croma")
+    alta_tipo_cristal(conexion, "Orgánico blanco", Decimal("4770"))
+    pagina = PaginaFacturacion(conexion)
+    pagina.show()
+    pagina._al_elegir_cliente(cliente_id)
+    pagina.campo_con_detalle.setChecked(True)
+    pagina.combo_tipo_detalle.setCurrentIndex(0)
+    pagina.campo_esferico_detalle.setValue(1.25)
+    pagina._agregar_o_actualizar_renglon()
+
+    pagina.tabla_detalle_actual.setCurrentCell(0, 0)
+    pagina._editar_renglon_actual()
+
+    assert pagina._indice_renglon_editando == 0
+    assert pagina.campo_esferico_detalle.value() == pytest.approx(1.25)
+    assert pagina.boton_agregar_renglon.text() == "Actualizar renglón"
+
+
+def test_quitar_renglon_lo_saca_de_la_tabla(app, conexion):
+    cliente_id = servicio_clientes.alta_cliente(conexion, nombre="Croma")
+    alta_tipo_cristal(conexion, "Orgánico blanco", Decimal("4770"))
+    pagina = PaginaFacturacion(conexion)
+    pagina.show()
+    pagina._al_elegir_cliente(cliente_id)
+    pagina.campo_con_detalle.setChecked(True)
+    pagina.combo_tipo_detalle.setCurrentIndex(0)
+    pagina._agregar_o_actualizar_renglon()
+    pagina.tabla_detalle_actual.setCurrentCell(0, 0)
+
+    pagina._quitar_renglon_actual()
+
+    assert pagina.tabla_detalle_actual.rowCount() == 0
+    assert pagina.campo_monto_lista.value() == pytest.approx(0.0)
+
+
+def test_guardar_con_detalle_crea_el_comprobante_con_renglones(app, conexion):
+    cliente_id = servicio_clientes.alta_cliente(conexion, nombre="Croma")
+    alta_tipo_cristal(conexion, "Orgánico blanco", Decimal("4770"))
+    pagina = PaginaFacturacion(conexion)
+    pagina.show()
+    pagina._al_elegir_cliente(cliente_id)
+    pagina.campo_con_detalle.setChecked(True)
+    pagina.combo_tipo_detalle.setCurrentIndex(0)
+    pagina.campo_cantidad_detalle.setValue(1)
+    pagina._agregar_o_actualizar_renglon()
+
+    pagina._guardar()
+
+    assert len(pagina._ids_sesion) == 1
+    comprobante_id = pagina._ids_sesion[0]
+    renglones = servicio_comprobantes.listar_detalle_comprobante(conexion, comprobante_id)
+    assert len(renglones) == 1
+    assert renglones[0]["graduacion"] == "Neutro"
+    # Se vuelve a modo detalle con la tabla vacía, lista para el siguiente, y
+    # con el próximo número ya sugerido (no colisiona con el que se guardó).
+    assert pagina.tabla_detalle_actual.rowCount() == 0
+    assert pagina.campo_numero.text() != ""
+
+
+def test_editar_comprobante_con_detalle_bloquea_montos(monkeypatch, app, conexion):
+    from PySide6.QtWidgets import QMessageBox
+    monkeypatch.setattr(QMessageBox, "information", staticmethod(lambda *a, **k: QMessageBox.Ok))
+
+    cliente_id = servicio_clientes.alta_cliente(conexion, nombre="Croma")
+    alta_tipo_cristal(conexion, "Orgánico blanco", Decimal("4770"))
+    pagina = PaginaFacturacion(conexion)
+    pagina.show()
+    pagina._al_elegir_cliente(cliente_id)
+    pagina.campo_con_detalle.setChecked(True)
+    pagina.combo_tipo_detalle.setCurrentIndex(0)
+    pagina._agregar_o_actualizar_renglon()
+    pagina._guardar()
+
+    pagina.tabla_sesion.setCurrentCell(0, 0)
+    pagina._editar_seleccionado()
+
+    assert not pagina.campo_monto_lista.isEnabled()
+    assert not pagina.campo_descuento.isEnabled()
+    assert not pagina.campo_con_iva.isEnabled()
+    assert not pagina.campo_con_detalle.isEnabled()
+
+
+def test_campo_decimal_selecciona_todo_al_enfocar(app, conexion):
+    cliente_id = servicio_clientes.alta_cliente(conexion, nombre="Croma")
+    pagina = PaginaFacturacion(conexion)
+    pagina.show()
+    pagina.activateWindow()
+    pagina._al_elegir_cliente(cliente_id)
+    pagina.campo_monto_lista.setValue(1234.56)
+
+    pagina.campo_monto_lista.setFocus()
+    app.processEvents()
+
+    editor = pagina.campo_monto_lista.lineEdit()
+    assert editor is not None
+    assert editor.selectedText() == editor.text()
+
+
+def test_enter_recorre_el_formulario_de_renglon_y_el_ultimo_agrega(app, conexion):
+    cliente_id = servicio_clientes.alta_cliente(conexion, nombre="Croma")
+    alta_tipo_cristal(conexion, "Orgánico blanco", Decimal("4770"))
+    pagina = PaginaFacturacion(conexion)
+    pagina.show()
+    pagina.activateWindow()
+    pagina._al_elegir_cliente(cliente_id)
+    pagina.campo_con_detalle.setChecked(True)
+
+    pagina.combo_tipo_detalle.setFocus()
+    app.processEvents()
+    _enter(pagina.combo_tipo_detalle)
+    app.processEvents()
+    assert pagina.campo_esferico_detalle.hasFocus()  # Descripción/Precio ocultos: cristal del catálogo
+
+    _enter(pagina.campo_esferico_detalle)
+    app.processEvents()
+    assert pagina.campo_cilindrico_detalle.hasFocus()
+
+    _enter(pagina.campo_cilindrico_detalle)
+    app.processEvents()
+    assert pagina.campo_cantidad_detalle.hasFocus()
+
+    _enter(pagina.campo_cantidad_detalle)  # último campo: agrega el renglón
+    app.processEvents()
+
+    assert pagina.tabla_detalle_actual.rowCount() == 1
+    assert pagina.combo_tipo_detalle.hasFocus()  # listo para cargar el siguiente
+
+
+def test_campo_esferico_muestra_el_signo_positivo(app, conexion):
+    cliente_id = servicio_clientes.alta_cliente(conexion, nombre="Croma")
+    alta_tipo_cristal(conexion, "Orgánico blanco", Decimal("4770"))
+    pagina = PaginaFacturacion(conexion)
+    pagina.show()
+    pagina._al_elegir_cliente(cliente_id)
+    pagina.campo_con_detalle.setChecked(True)
+
+    pagina.campo_esferico_detalle.setValue(1.25)
+    pagina.campo_cilindrico_detalle.setValue(-0.50)
+
+    assert pagina.campo_esferico_detalle.text() == "+1.25"
+    assert pagina.campo_cilindrico_detalle.text() == "-0.50"

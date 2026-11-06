@@ -254,3 +254,204 @@ ALTER TABLE recibos ADD COLUMN referencia TEXT;
 MIGRACION_5_ESQUEMA = """
 ALTER TABLE movimientos_caja ADD COLUMN nota TEXT;
 """
+
+# Catálogo de tipos de cristal (etapa 1 del plan de detalle de comprobantes):
+# base para elegir un cristal al cargar un renglón, en vez de tipear el
+# nombre cada vez. "vendido_por" distingue cristales (se venden por par,
+# precio_unitario = precio_lista / 2) de accesorios como pegatinas (se
+# venden por unidad/rollo, precio_unitario = precio_lista). "reponible"
+# excluye del reporte de reposición ítems de stock que no se reponen (ej.
+# minerales "hasta agotar stock").
+MIGRACION_6_ESQUEMA = """
+CREATE TABLE tipos_cristal (
+    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+    nombre              TEXT NOT NULL,
+    categoria           TEXT,
+    precio_lista        DECIMAL_TEXT NOT NULL DEFAULT '0',
+    vendido_por         TEXT NOT NULL DEFAULT 'par' CHECK (vendido_por IN ('par', 'unidad')),
+    requiere_graduacion INTEGER NOT NULL DEFAULT 1 CHECK (requiere_graduacion IN (0, 1)),
+    reponible           INTEGER NOT NULL DEFAULT 1 CHECK (reponible IN (0, 1)),
+    activo              INTEGER NOT NULL DEFAULT 1 CHECK (activo IN (0, 1))
+);
+
+CREATE INDEX ix_tipos_cristal_nombre ON tipos_cristal (nombre);
+"""
+
+# Detalle (renglones) de un comprobante (plan de detalle de comprobantes,
+# etapa 2): opcional — un comprobante cargado con la carga rápida de hoy
+# simplemente no tiene filas acá. "graduacion" nunca puede quedar vacía
+# cuando el tipo de cristal la requiere (se valida en services/, no acá).
+# "pedido_especial_linea_id" no tiene REFERENCES todavía porque la tabla
+# "pedido_lineas" se crea recién en una etapa posterior del plan (SQLite no
+# valida FK contra una tabla inexistente mientras la columna quede en NULL,
+# que es el único valor posible hasta esa etapa); se deja comentado acá para
+# que quede documentada la intención.
+MIGRACION_7_ESQUEMA = """
+CREATE TABLE detalle_comprobante (
+    id                          INTEGER PRIMARY KEY AUTOINCREMENT,
+    comprobante_id               INTEGER NOT NULL REFERENCES comprobantes (id),
+    tipo_cristal_id               INTEGER REFERENCES tipos_cristal (id),
+    descripcion                  TEXT,
+    graduacion                   TEXT NOT NULL,
+    cantidad                     INTEGER NOT NULL CHECK (cantidad > 0),
+    precio_unitario               DECIMAL_TEXT NOT NULL,
+    subtotal                     DECIMAL_TEXT NOT NULL,
+    pedido_especial_linea_id      INTEGER  -- REFERENCES pedido_lineas (id), etapa futura
+);
+
+CREATE INDEX ix_detalle_comprobante_comprobante ON detalle_comprobante (comprobante_id);
+"""
+
+# Pedidos a proveedor (plan de detalle de comprobantes, etapa 4): cabecera
+# + líneas, con dos orígenes — "reposicion" (se generan solas desde el
+# reporte de ventas de stock) y "especial" (cargadas a mano, cristales que
+# no hay en stock y se piden on-demand). El "estado" de la línea ya incluye
+# los pasos de aprobación del cliente (etapa 5: a veces el proveedor manda
+# una graduación aproximada y hay que confirmarla antes de entregar), aunque
+# en esta etapa el flujo solo usa 'pedido' y 'recibido'.
+MIGRACION_8_ESQUEMA = """
+CREATE TABLE pedidos_proveedor (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    proveedor_id    INTEGER NOT NULL REFERENCES proveedores (id),
+    fecha           TEXT NOT NULL,
+    estado          TEXT NOT NULL DEFAULT 'abierto' CHECK (estado IN ('abierto', 'cerrado'))
+);
+
+CREATE INDEX ix_pedidos_proveedor_proveedor ON pedidos_proveedor (proveedor_id);
+
+CREATE TABLE pedido_lineas (
+    id                      INTEGER PRIMARY KEY AUTOINCREMENT,
+    pedido_id               INTEGER NOT NULL REFERENCES pedidos_proveedor (id),
+    tipo_cristal_id         INTEGER REFERENCES tipos_cristal (id),
+    descripcion             TEXT,
+    cantidad                INTEGER NOT NULL CHECK (cantidad > 0),
+    origen                  TEXT NOT NULL CHECK (origen IN ('reposicion', 'especial')),
+    cliente_id              INTEGER REFERENCES clientes (id),
+    graduacion_solicitada   TEXT,
+    graduacion_recibida     TEXT,
+    estado                  TEXT NOT NULL DEFAULT 'pedido'
+                            CHECK (estado IN ('pedido', 'recibido', 'pendiente_aprobacion',
+                                               'aprobado', 'rechazado', 'entregado'))
+);
+
+CREATE INDEX ix_pedido_lineas_pedido ON pedido_lineas (pedido_id);
+"""
+
+# El estado del pedido pasa de 'abierto'/'cerrado' a tres pasos explícitos
+# que reflejan el proceso real: se arma ('en_carga'), se le manda al
+# proveedor ('realizado') y llega ('recibido'). SQLite no permite cambiar un
+# CHECK existente con ALTER TABLE, así que se recrea la tabla preservando
+# los ids (de los que dependen las líneas) y migrando los valores viejos.
+MIGRACION_9_ESQUEMA = """
+PRAGMA foreign_keys = OFF;
+PRAGMA legacy_alter_table = ON;
+
+ALTER TABLE pedidos_proveedor RENAME TO pedidos_proveedor_viejo;
+
+CREATE TABLE pedidos_proveedor (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    proveedor_id    INTEGER NOT NULL REFERENCES proveedores (id),
+    fecha           TEXT NOT NULL,
+    estado          TEXT NOT NULL DEFAULT 'en_carga'
+                    CHECK (estado IN ('en_carga', 'realizado', 'recibido'))
+);
+
+INSERT INTO pedidos_proveedor (id, proveedor_id, fecha, estado)
+SELECT id, proveedor_id, fecha,
+       CASE estado WHEN 'abierto' THEN 'en_carga' WHEN 'cerrado' THEN 'recibido' ELSE estado END
+FROM pedidos_proveedor_viejo;
+
+DROP TABLE pedidos_proveedor_viejo;
+
+CREATE INDEX ix_pedidos_proveedor_proveedor ON pedidos_proveedor (proveedor_id);
+
+PRAGMA legacy_alter_table = OFF;
+PRAGMA foreign_keys = ON;
+"""
+
+# Devolución de un cliente (plan de detalle de comprobantes, etapa 5.1): se
+# anula el comprobante (no se cobra; todavía no se maneja stock real). Si lo
+# devuelto era de stock y ese cristal/graduación ya se había vuelto a pedir
+# al proveedor antes de la devolución, queda acá una "compensación" para no
+# pedirlo de más la próxima vez que se genere la reposición de esa
+# combinación — una fila por (tipo_cristal, graduación), acumulando
+# cantidad; se borra sola cuando se termina de usar.
+MIGRACION_10_ESQUEMA = """
+CREATE TABLE compensaciones_reposicion (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    tipo_cristal_id INTEGER NOT NULL REFERENCES tipos_cristal (id),
+    graduacion      TEXT NOT NULL,
+    cantidad        INTEGER NOT NULL CHECK (cantidad > 0)
+);
+
+CREATE UNIQUE INDEX ix_compensaciones_reposicion_tipo_grad
+    ON compensaciones_reposicion (tipo_cristal_id, graduacion);
+"""
+
+# Evita pedir dos veces lo mismo cuando se genera la reposición con rangos
+# de fechas que se superponen (p. ej. un pedido del día 1, y a los 3 días
+# otro del día 1 al 3: sin esto, lo vendido el día 1 se cuenta las dos
+# veces). Cada renglón de venta de stock queda marcado apenas se usa en un
+# pedido de reposición — se mire o no se mire de nuevo ese rango de fechas,
+# no vuelve a contarse.
+MIGRACION_11_ESQUEMA = """
+ALTER TABLE detalle_comprobante ADD COLUMN incluido_en_reposicion INTEGER NOT NULL DEFAULT 0
+    CHECK (incluido_en_reposicion IN (0, 1));
+"""
+
+# Reemplaza los estados de línea de la etapa 5 (que incluían un paso de
+# aprobación que se sacó) por los que realmente hacen falta al recibir un
+# pedido: cada línea se resuelve a mano, cristal por cristal, con uno de
+# cuatro resultados posibles, antes de poder cerrar el pedido — 'pedido' es
+# el único estado "sin resolver" (bloquea "Marcar pedido recibido").
+# 'pendiente_aprobacion'/'aprobado' (llegaron, con o sin diferencia) pasan a
+# 'recibido_con_diferencia'; 'rechazado' (no se entregaba) pasa a
+# 'cancelado'. Mismo motivo que la migración 9 para recrear la tabla: SQLite
+# no permite cambiar un CHECK existente con ALTER TABLE.
+MIGRACION_12_ESQUEMA = """
+PRAGMA foreign_keys = OFF;
+PRAGMA legacy_alter_table = ON;
+
+ALTER TABLE pedido_lineas RENAME TO pedido_lineas_viejo;
+
+CREATE TABLE pedido_lineas (
+    id                      INTEGER PRIMARY KEY AUTOINCREMENT,
+    pedido_id               INTEGER NOT NULL REFERENCES pedidos_proveedor (id),
+    tipo_cristal_id         INTEGER REFERENCES tipos_cristal (id),
+    descripcion             TEXT,
+    cantidad                INTEGER NOT NULL CHECK (cantidad > 0),
+    origen                  TEXT NOT NULL CHECK (origen IN ('reposicion', 'especial')),
+    cliente_id              INTEGER REFERENCES clientes (id),
+    graduacion_solicitada   TEXT,
+    graduacion_recibida     TEXT,
+    estado                  TEXT NOT NULL DEFAULT 'pedido'
+                            CHECK (estado IN ('pedido', 'recibido', 'recibido_con_diferencia',
+                                               'pendiente', 'cancelado', 'entregado'))
+);
+
+INSERT INTO pedido_lineas (id, pedido_id, tipo_cristal_id, descripcion, cantidad, origen,
+                           cliente_id, graduacion_solicitada, graduacion_recibida, estado)
+SELECT id, pedido_id, tipo_cristal_id, descripcion, cantidad, origen,
+       cliente_id, graduacion_solicitada, graduacion_recibida,
+       CASE estado
+           WHEN 'pendiente_aprobacion' THEN 'recibido_con_diferencia'
+           WHEN 'aprobado' THEN 'recibido_con_diferencia'
+           WHEN 'rechazado' THEN 'cancelado'
+           ELSE estado
+       END
+FROM pedido_lineas_viejo;
+
+DROP TABLE pedido_lineas_viejo;
+
+CREATE INDEX ix_pedido_lineas_pedido ON pedido_lineas (pedido_id);
+
+PRAGMA legacy_alter_table = OFF;
+PRAGMA foreign_keys = ON;
+"""
+
+# Vincula una compra (factura de proveedor) con el pedido que la generó, al
+# marcarlo recibido — para encontrarla después desde el pedido, y para no
+# tener que volver a tipear proveedor/fecha a mano en esa pantalla.
+MIGRACION_13_ESQUEMA = """
+ALTER TABLE compras ADD COLUMN pedido_id INTEGER REFERENCES pedidos_proveedor (id);
+"""

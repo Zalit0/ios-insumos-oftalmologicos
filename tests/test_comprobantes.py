@@ -131,6 +131,52 @@ def test_anular_comprobante_no_lo_borra(conexion, rto_id, croma):
     assert comprobante["estado"] == "anulado"
 
 
+def test_registrar_devolucion_anula_el_comprobante(conexion, rto_id, croma):
+    cliente_id, sucursal_id = croma
+    comprobante_id = servicio.alta_comprobante(
+        conexion, rto_id, "45110", "2024-03-05", cliente_id, sucursal_id, Decimal("1000")
+    )
+
+    servicio.registrar_devolucion(conexion, comprobante_id)
+
+    comprobante = datos.obtener_comprobante(conexion, comprobante_id)
+    assert comprobante["estado"] == "anulado"
+
+
+def test_registrar_devolucion_ya_repuesto_guarda_una_compensacion(conexion, rto_id, croma):
+    from ios.data import compensaciones_reposicion as datos_compensaciones
+    from ios.services.comprobantes import RenglonDetalle
+    from ios.services.tipos_cristal import alta_tipo_cristal
+
+    cliente_id, sucursal_id = croma
+    organico = alta_tipo_cristal(conexion, "Orgánico blanco", Decimal("4770"))
+    comprobante_id = servicio.alta_comprobante_con_detalle(
+        conexion, rto_id, "45111", "2024-03-05", cliente_id, sucursal_id,
+        renglones=[RenglonDetalle(graduacion="Neutro", cantidad=2, tipo_cristal_id=organico)],
+    )
+
+    servicio.registrar_devolucion(conexion, comprobante_id, ya_repuesto=True)
+
+    assert datos_compensaciones.obtener_cantidad_compensada(conexion, organico, "Neutro") == 2
+
+
+def test_registrar_devolucion_sin_marcar_ya_repuesto_no_compensa(conexion, rto_id, croma):
+    from ios.data import compensaciones_reposicion as datos_compensaciones
+    from ios.services.comprobantes import RenglonDetalle
+    from ios.services.tipos_cristal import alta_tipo_cristal
+
+    cliente_id, sucursal_id = croma
+    organico = alta_tipo_cristal(conexion, "Orgánico blanco", Decimal("4770"))
+    comprobante_id = servicio.alta_comprobante_con_detalle(
+        conexion, rto_id, "45112", "2024-03-05", cliente_id, sucursal_id,
+        renglones=[RenglonDetalle(graduacion="Neutro", cantidad=2, tipo_cristal_id=organico)],
+    )
+
+    servicio.registrar_devolucion(conexion, comprobante_id, ya_repuesto=False)
+
+    assert datos_compensaciones.obtener_cantidad_compensada(conexion, organico, "Neutro") == 0
+
+
 def test_numero_anulado_no_cuenta_como_repetido(conexion, rto_id, croma):
     cliente_id, sucursal_id = croma
     primero_id = servicio.alta_comprobante(
@@ -301,3 +347,45 @@ def test_cargar_un_mes_de_remitos_sin_tocar_formulas(conexion, rto_id, croma):
 
     total_venta = sum((c["monto_final"] for c in comprobantes), Decimal(0))
     assert total_venta == Decimal("78408") + Decimal("3533.12") + Decimal("1000")
+
+
+def test_siguiente_numero_comprobante_empieza_en_1_sin_remitos(conexion, rto_id):
+    assert servicio.siguiente_numero_comprobante(conexion, rto_id) == "1"
+
+
+def test_siguiente_numero_comprobante_sigue_al_mayor_existente(conexion, rto_id, croma):
+    cliente_id, sucursal_id = croma
+    servicio.alta_comprobante(
+        conexion, rto_id, "500", "2026-03-05", cliente_id, sucursal_id, Decimal("1000"),
+    )
+
+    assert servicio.siguiente_numero_comprobante(conexion, rto_id) == "501"
+
+
+def test_siguiente_numero_comprobante_ignora_numeros_no_numericos(conexion, rto_id, croma):
+    cliente_id, sucursal_id = croma
+    servicio.alta_comprobante(
+        conexion, rto_id, "S/N", "2026-03-05", cliente_id, sucursal_id, Decimal("1000"),
+    )
+
+    assert servicio.siguiente_numero_comprobante(conexion, rto_id) == "1"
+
+
+def test_siguiente_numero_comprobante_no_baja_si_el_mayor_esta_anulado(conexion, rto_id, croma):
+    cliente_id, sucursal_id = croma
+    comprobante_id = servicio.alta_comprobante(
+        conexion, rto_id, "500", "2026-03-05", cliente_id, sucursal_id, Decimal("1000"),
+    )
+    servicio.anular_comprobante(conexion, comprobante_id)
+
+    assert servicio.siguiente_numero_comprobante(conexion, rto_id) == "501"
+
+
+def test_siguiente_numero_comprobante_es_independiente_por_tipo(conexion, rto_id, croma):
+    cliente_id, sucursal_id = croma
+    otro_tipo_id = servicio_tipos.alta_tipo_comprobante(conexion, "Factura", "FAC")
+    servicio.alta_comprobante(
+        conexion, rto_id, "500", "2026-03-05", cliente_id, sucursal_id, Decimal("1000"),
+    )
+
+    assert servicio.siguiente_numero_comprobante(conexion, otro_tipo_id) == "1"

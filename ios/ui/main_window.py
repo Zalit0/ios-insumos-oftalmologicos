@@ -36,6 +36,7 @@ from ios.ui.pages.comprobantes import PaginaComprobantes
 from ios.ui.pages.configuracion import PaginaConfiguracion
 from ios.ui.pages.cuenta_corriente import PaginaCuentaCorriente
 from ios.ui.pages.deudores import PaginaDeudores
+from ios.ui.pages.entrega_pedidos import PaginaEntregaPedidos
 from ios.ui.pages.exportacion_contador import PaginaExportacionContador
 from ios.ui.pages.facturacion import PaginaFacturacion
 from ios.ui.pages.flujo_caja import PaginaFlujoCaja
@@ -43,7 +44,10 @@ from ios.ui.pages.gastos_caja_chica import PaginaGastosCajaChica
 from ios.ui.pages.importar_excel import PaginaImportarExcel
 from ios.ui.pages.inicio import PaginaInicio
 from ios.ui.pages.iva_mes import PaginaIvaMes
+from ios.ui.pages.pedidos_proveedor import PaginaPedidosProveedor
+from ios.ui.pages.recepcion_pedidos import PaginaRecepcionPedidos
 from ios.ui.pages.recibos import PaginaRecibos
+from ios.ui.pages.ver_pedidos import PaginaVerPedidos
 from ios.ui.pages.resumen_mensual import PaginaResumenMensual
 from ios.version import IOS_VERSION
 
@@ -80,6 +84,10 @@ MENUS: list[tuple[str, list[OpcionMenu]]] = [
     ("&Compras", [
         OpcionMenu("Compras y proveedores", PaginaComprasProveedores),
         OpcionMenu("Pagos a proveedores", PaginaComprasProveedores, al_mostrar=_ir_a_pestana_pagos),
+        OpcionMenu("Pedidos a proveedor", PaginaPedidosProveedor),
+        OpcionMenu("Recepción de pedidos", PaginaRecepcionPedidos),
+        OpcionMenu("Entrega de pedidos especiales", PaginaEntregaPedidos),
+        OpcionMenu("Ver pedidos", PaginaVerPedidos),
     ]),
     ("Ca&ja", [
         OpcionMenu("Caja diaria", PaginaCajaDiaria, "F4"),

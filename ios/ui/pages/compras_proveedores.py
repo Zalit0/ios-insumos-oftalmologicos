@@ -11,7 +11,6 @@ from PySide6.QtCore import QDate
 from PySide6.QtWidgets import (
     QComboBox,
     QDateEdit,
-    QDoubleSpinBox,
     QFormLayout,
     QGroupBox,
     QHBoxLayout,
@@ -36,7 +35,7 @@ from ios.reports.formato import formato_fecha, formato_moneda
 from ios.services import compras as servicio_compras
 from ios.services import pagos_proveedor as servicio_pagos
 from ios.services import proveedores as servicio_proveedores
-from ios.ui.widgets import ajustar_columnas
+from ios.ui.widgets import CampoDecimal, ajustar_columnas
 
 TASAS_IVA_COMPRA = [("21%", Decimal("21")), ("10,5%", Decimal("10.5")), ("0%", Decimal("0"))]
 
@@ -150,7 +149,7 @@ class PaginaComprasProveedores(QWidget):
         self._campo_compra_numero = QLineEdit()
         self._campo_compra_fecha = QDateEdit(QDate.currentDate())
         self._campo_compra_fecha.setCalendarPopup(True)
-        self._campo_compra_monto = QDoubleSpinBox()
+        self._campo_compra_monto = CampoDecimal()
         self._campo_compra_monto.setRange(0, 99_999_999)
         self._campo_compra_monto.setDecimals(2)
         self._campo_compra_monto.valueChanged.connect(self._recalcular_iva_compra)
@@ -158,7 +157,7 @@ class PaginaComprasProveedores(QWidget):
         for etiqueta, _tasa in TASAS_IVA_COMPRA:
             self._campo_compra_tasa_iva.addItem(etiqueta)
         self._campo_compra_tasa_iva.currentIndexChanged.connect(self._recalcular_iva_compra)
-        self._campo_compra_iva = QDoubleSpinBox()
+        self._campo_compra_iva = CampoDecimal()
         self._campo_compra_iva.setRange(0, 99_999_999)
         self._campo_compra_iva.setDecimals(2)
 
@@ -262,7 +261,7 @@ class PaginaComprasProveedores(QWidget):
         self._campo_pago_proveedor = QComboBox()
         self._campo_pago_fecha = QDateEdit(QDate.currentDate())
         self._campo_pago_fecha.setCalendarPopup(True)
-        self._campo_pago_monto = QDoubleSpinBox()
+        self._campo_pago_monto = CampoDecimal()
         self._campo_pago_monto.setRange(0, 99_999_999)
         self._campo_pago_monto.setDecimals(2)
         self._campo_pago_forma = QComboBox()

@@ -14,13 +14,11 @@ from PySide6.QtCore import QDate
 from PySide6.QtWidgets import (
     QComboBox,
     QDateEdit,
-    QFileDialog,
     QHBoxLayout,
     QLabel,
     QLayout,
     QMessageBox,
     QPushButton,
-    QSpinBox,
     QTableWidget,
     QTableWidgetItem,
     QTabWidget,
@@ -35,9 +33,10 @@ from ios.reports.estado_cuenta import (
     generar_pdf_historial_movimientos,
 )
 from ios.reports.formato import formato_fecha, formato_moneda
+from ios.reports.pdf_comun import abrir_pdf, ruta_pdf_automatica
 from ios.services.cuenta_corriente import estado_de_cuenta_cliente, estado_de_cuenta_periodo
 from ios.services.graficos_resumen_mensual import primer_dia_del_mes, ultimo_dia_del_mes
-from ios.ui.widgets import BuscadorCliente, ajustar_columnas
+from ios.ui.widgets import BuscadorCliente, CampoEntero, ajustar_columnas
 
 NOMBRES_MESES = [
     "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
@@ -89,7 +88,7 @@ class PaginaCuentaCorriente(QWidget):
             self._campo_mes.addItem(nombre, numero)
         self._campo_mes.setCurrentIndex(hoy.month - 1)
         fila_periodo.addWidget(self._campo_mes)
-        self._campo_anio = QSpinBox()
+        self._campo_anio = CampoEntero()
         self._campo_anio.setRange(2000, 2100)
         self._campo_anio.setValue(hoy.year)
         fila_periodo.addWidget(self._campo_anio)
@@ -315,11 +314,11 @@ class PaginaCuentaCorriente(QWidget):
         if self._cliente_id is None:
             return
         cliente = datos_clientes.obtener_cliente(self.conexion, self._cliente_id)
-        ruta, _ = QFileDialog.getSaveFileName(
-            self, "Exportar estado de cuenta", f"Estado de cuenta - {cliente['nombre']}.pdf", "PDF (*.pdf)"
+        periodo = f"{self._fecha_desde()} a {self._fecha_hasta()}" if self._modo_periodo else "Todo"
+        ruta = ruta_pdf_automatica(
+            f"Estado de cuenta - {cliente['nombre']} - {periodo}.pdf",
+            subcarpeta=f"Cuenta corriente/{cliente['nombre']}",
         )
-        if not ruta:
-            return
 
         modo = self._campo_modo_pdf.currentData()
         if modo == MODO_PENDIENTES:
@@ -337,4 +336,4 @@ class PaginaCuentaCorriente(QWidget):
             generar_pdf_estado_cuenta_periodo(
                 self.conexion, self._cliente_id, self._fecha_desde(), self._fecha_hasta(), ruta
             )
-        QMessageBox.information(self, "Listo", "Se exportó el estado de cuenta.")
+        abrir_pdf(ruta)

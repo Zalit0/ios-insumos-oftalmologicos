@@ -12,14 +12,17 @@ import pytest
 
 pytest.importorskip("PySide6")
 
-from PySide6.QtCore import QDate
-from PySide6.QtWidgets import QApplication, QDialog
+from PySide6.QtCore import QDate, Qt
+from PySide6.QtWidgets import QApplication, QDialog, QMessageBox
 
 from ios.data import comprobantes as datos_comprobantes
+from ios.data import compensaciones_reposicion as datos_compensaciones
 from ios.data.db import conectar
 from ios.services import clientes as servicio_clientes
 from ios.services import comprobantes as servicio_comprobantes
 from ios.services.cobranzas import AplicacionARemito, Pago, asentar_cobranza
+from ios.services.comprobantes import RenglonDetalle
+from ios.services.tipos_cristal import alta_tipo_cristal
 from ios.ui.pages.comprobantes import PaginaComprobantes, _DialogoEditarComprobante
 
 
@@ -170,3 +173,52 @@ def test_editar_con_pagos_bloquea_monto_pero_permite_numero(app, conexion, croma
     comprobante = datos_comprobantes.obtener_comprobante(conexion, ids[0])
     assert comprobante["numero"] == "999"
     assert comprobante["monto_lista"] == Decimal("1000")  # no cambió
+
+
+def test_registrar_devolucion_anula_y_no_pregunta_si_no_hay_detalle(
+    monkeypatch, app, conexion, croma_con_remitos
+):
+    preguntas = []
+    monkeypatch.setattr(
+        QMessageBox, "question",
+        staticmethod(lambda *a, **k: preguntas.append(a) or QMessageBox.Yes),
+    )
+    cliente_id, ids = croma_con_remitos
+    pagina = PaginaComprobantes(conexion)
+    _rango_2024(pagina)
+    pagina._tabla.selectRow(0)
+    comprobante_id = pagina._tabla.item(0, 0).data(Qt.UserRole)
+
+    pagina._registrar_devolucion_seleccionado()
+
+    comprobante = datos_comprobantes.obtener_comprobante(conexion, comprobante_id)
+    assert comprobante["estado"] == "anulado"
+    assert len(preguntas) == 1  # solo la confirmación, sin detalle no hay nada que compensar
+
+
+def test_registrar_devolucion_con_detalle_pregunta_y_compensa(
+    monkeypatch, app, conexion, rto_id, croma_con_remitos
+):
+    monkeypatch.setattr(QMessageBox, "question", staticmethod(lambda *a, **k: QMessageBox.Yes))
+    cliente_id, _ = croma_con_remitos
+    sucursal_id = conexion.execute(
+        "SELECT id FROM sucursales WHERE cliente_id = ?", (cliente_id,)
+    ).fetchone()["id"]
+    organico = alta_tipo_cristal(conexion, "Orgánico blanco", Decimal("4770"))
+    comprobante_id = servicio_comprobantes.alta_comprobante_con_detalle(
+        conexion, rto_id, "900", "2024-03-05", cliente_id, sucursal_id,
+        renglones=[RenglonDetalle(graduacion="Neutro", cantidad=2, tipo_cristal_id=organico)],
+    )
+    pagina = PaginaComprobantes(conexion)
+    _rango_2024(pagina)
+    fila = next(
+        f for f in range(pagina._tabla.rowCount())
+        if pagina._tabla.item(f, 0).data(Qt.UserRole) == comprobante_id
+    )
+    pagina._tabla.selectRow(fila)
+
+    pagina._registrar_devolucion_seleccionado()
+
+    comprobante = datos_comprobantes.obtener_comprobante(conexion, comprobante_id)
+    assert comprobante["estado"] == "anulado"
+    assert datos_compensaciones.obtener_cantidad_compensada(conexion, organico, "Neutro") == 2

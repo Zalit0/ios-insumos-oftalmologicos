@@ -25,6 +25,7 @@ from ios.data import categorias_caja as datos_categorias
 from ios.data import formas_pago as datos_formas_pago
 from ios.reports.formato import formato_fecha, formato_moneda
 from ios.reports.gastos_caja_chica import generar_excel_gastos_caja_chica, generar_pdf_gastos_caja_chica
+from ios.reports.pdf_comun import abrir_pdf, ruta_pdf_automatica
 from ios.services.gastos_caja_chica import gastos_de_caja_chica
 from ios.ui.widgets import ajustar_columnas
 
@@ -153,17 +154,16 @@ class PaginaGastosCajaChica(QWidget):
     # --- exportar ---
 
     def _exportar_pdf(self) -> None:
-        ruta, _ = QFileDialog.getSaveFileName(
-            self, "Exportar gastos de caja chica", "Gastos de caja chica.pdf", "PDF (*.pdf)"
+        ruta = ruta_pdf_automatica(
+            f"Gastos de caja chica - {self._fecha_desde()} a {self._fecha_hasta()}.pdf",
+            subcarpeta="Gastos de caja chica",
         )
-        if not ruta:
-            return
         generar_pdf_gastos_caja_chica(
             self.conexion, self._fecha_desde(), self._fecha_hasta(), ruta,
             categoria_id=self._campo_categoria.currentData(),
             forma_pago_id=self._campo_forma_pago.currentData(),
         )
-        QMessageBox.information(self, "Listo", "Se exportaron los gastos de caja chica.")
+        abrir_pdf(ruta)
 
     def _exportar_excel(self) -> None:
         ruta, _ = QFileDialog.getSaveFileName(

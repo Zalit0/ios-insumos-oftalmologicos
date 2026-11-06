@@ -13,8 +13,6 @@ from PySide6.QtCore import QDate, Qt
 from PySide6.QtWidgets import (
     QComboBox,
     QDateEdit,
-    QDoubleSpinBox,
-    QFileDialog,
     QGroupBox,
     QHBoxLayout,
     QLabel,
@@ -34,11 +32,12 @@ from ios.data import formas_pago as datos_formas_pago
 from ios.data import recibos as datos_recibos
 from ios.domain.calculos import calcular_saldo_a_favor, calcular_saldo_comprobante
 from ios.reports.formato import formato_fecha, formato_moneda
+from ios.reports.pdf_comun import abrir_pdf, ruta_pdf_automatica
 from ios.reports.recibo import generar_pdf_recibo
 from ios.services.caja import hay_caja_abierta_hoy
 from ios.services.cobranzas import AplicacionARemito, DatosCheque, Pago, aplicar_saldo_a_favor, asentar_cobranza
 from ios.ui.pages.caja_diaria import abrir_caja_con_dialogo
-from ios.ui.widgets import ajustar_columnas
+from ios.ui.widgets import CampoDecimal, ajustar_columnas
 
 COLUMNA_TILDE = 0
 COLUMNA_NUMERO = 1
@@ -63,7 +62,7 @@ class _FilaFormaPago(QWidget):
             self.combo_forma.addItem(forma["nombre"], forma["id"])
         self.combo_forma.currentIndexChanged.connect(self._actualizar_visibilidad_cheque)
 
-        self.monto = QDoubleSpinBox()
+        self.monto = CampoDecimal()
         self.monto.setRange(0, 99_999_999)
         self.monto.setDecimals(2)
         if al_cambiar_monto is not None:
@@ -239,7 +238,7 @@ class PaginaCobranzas(QWidget):
             self._tabla.setItem(fila, COLUMNA_FECHA, QTableWidgetItem(formato_fecha(comprobante["fecha"])))
             self._tabla.setItem(fila, COLUMNA_SALDO, QTableWidgetItem(formato_moneda(saldo)))
 
-            campo_monto = QDoubleSpinBox()
+            campo_monto = CampoDecimal()
             campo_monto.setRange(0, float(saldo))
             campo_monto.setDecimals(2)
             campo_monto.setValue(float(saldo))
@@ -465,8 +464,7 @@ class PaginaCobranzas(QWidget):
         )
         if respuesta != QMessageBox.Yes:
             return
-        ruta, _ = QFileDialog.getSaveFileName(
-            self, "Guardar recibo", f"Recibo {recibo['numero']}.pdf", "PDF (*.pdf)"
-        )
-        if ruta:
-            generar_pdf_recibo(self.conexion, recibo_id, ruta)
+        fecha = formato_fecha(recibo["fecha"]).replace("/", "-")
+        ruta = ruta_pdf_automatica(f"Recibo {recibo['numero']} - {fecha}.pdf", subcarpeta="Recibos")
+        generar_pdf_recibo(self.conexion, recibo_id, ruta)
+        abrir_pdf(ruta)

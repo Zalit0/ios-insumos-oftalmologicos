@@ -4,6 +4,9 @@ encabezado")."""
 
 from __future__ import annotations
 
+import os
+import subprocess
+import sys
 from pathlib import Path
 
 from reportlab.lib import colors
@@ -82,3 +85,30 @@ def generar_pdf(ruta_salida: Path | str, elementos: list) -> Path:
     )
     documento.build(elementos)
     return ruta_salida
+
+
+# Carpeta fija donde se guardan todos los PDF que genera la app: así no hay
+# que elegir dónde guardar cada vez que se exporta uno (docs/AJUSTES_V1.1.md,
+# pedido del usuario — antes cada pantalla pedía "Guardar como").
+CARPETA_PDF_POR_DEFECTO = Path.home() / "Documents" / "IOS"
+
+
+def ruta_pdf_automatica(nombre_archivo: str, subcarpeta: str | None = None) -> Path:
+    """Ruta en la carpeta fija de PDF para ``nombre_archivo``, dentro de
+    ``subcarpeta`` si se indica (una por tipo de reporte, p. ej. "Recibos",
+    o "Cuenta corriente/Croma" para separar también por cliente); crea las
+    carpetas si todavía no existen."""
+    carpeta = CARPETA_PDF_POR_DEFECTO / subcarpeta if subcarpeta else CARPETA_PDF_POR_DEFECTO
+    carpeta.mkdir(parents=True, exist_ok=True)
+    return carpeta / nombre_archivo
+
+
+def abrir_pdf(ruta: Path | str) -> None:
+    """Abre un PDF ya generado con el lector predeterminado del sistema."""
+    ruta = str(ruta)
+    if sys.platform == "win32":
+        os.startfile(ruta)  # abre con la app asociada a .pdf, no ejecuta nada
+    elif sys.platform == "darwin":
+        subprocess.Popen(["open", ruta])
+    else:
+        subprocess.Popen(["xdg-open", ruta])

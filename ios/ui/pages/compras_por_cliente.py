@@ -30,6 +30,7 @@ from ios.reports.compras_por_cliente import (
     generar_pdf_ranking_clientes,
 )
 from ios.reports.formato import formato_fecha, formato_moneda
+from ios.reports.pdf_comun import abrir_pdf, ruta_pdf_automatica
 from ios.services.compras_por_cliente import compras_de_cliente, ranking_todos_los_clientes
 from ios.ui.widgets import BuscadorCliente, ajustar_columnas
 
@@ -205,27 +206,23 @@ class PaginaComprasPorCliente(QWidget):
     # --- exportar ---
 
     def _exportar_pdf(self) -> None:
+        periodo = f"{self._fecha_desde()} a {self._fecha_hasta()}"
         if self._cliente_id is None:
-            ruta, _ = QFileDialog.getSaveFileName(
-                self, "Exportar ranking de clientes", "Compras por cliente.pdf", "PDF (*.pdf)"
+            ruta = ruta_pdf_automatica(
+                f"Compras por cliente - {periodo}.pdf", subcarpeta="Compras por cliente"
             )
-            if not ruta:
-                return
             generar_pdf_ranking_clientes(self.conexion, self._fecha_desde(), self._fecha_hasta(), ruta)
         else:
             cliente = datos_clientes.obtener_cliente(self.conexion, self._cliente_id)
-            ruta, _ = QFileDialog.getSaveFileName(
-                self, "Exportar compras por cliente",
-                f"Compras {cliente['nombre']}.pdf", "PDF (*.pdf)",
+            ruta = ruta_pdf_automatica(
+                f"Compras {cliente['nombre']} - {periodo}.pdf", subcarpeta="Compras por cliente"
             )
-            if not ruta:
-                return
             generar_pdf_compras_cliente(
                 self.conexion, self._cliente_id, cliente["nombre"],
                 self._fecha_desde(), self._fecha_hasta(), ruta,
                 sucursal_id=self._campo_sucursal.currentData(),
             )
-        QMessageBox.information(self, "Listo", "Se exportó el reporte.")
+        abrir_pdf(ruta)
 
     def _exportar_excel(self) -> None:
         if self._cliente_id is None:

@@ -5,14 +5,60 @@ from __future__ import annotations
 import sqlite3
 
 from PySide6.QtCore import QStringListModel, Qt, Signal
-from PySide6.QtWidgets import QCompleter, QLineEdit, QTableWidget, QVBoxLayout, QWidget
+from PySide6.QtWidgets import (
+    QCompleter,
+    QDoubleSpinBox,
+    QLineEdit,
+    QSpinBox,
+    QTableWidget,
+    QVBoxLayout,
+    QWidget,
+)
 
 from ios.data import clientes as datos_clientes
 from ios.domain.texto import normalizar
 
-__all__ = ["normalizar", "BuscadorCliente", "ajustar_columnas"]
+__all__ = [
+    "normalizar", "BuscadorCliente", "ajustar_columnas", "CampoDecimal", "CampoEntero",
+    "CampoGraduacion",
+]
 
 ANCHO_MAXIMO_COLUMNA = 320
+
+
+class CampoDecimal(QDoubleSpinBox):
+    """``QDoubleSpinBox`` que selecciona todo su valor al recibir el foco
+    (clic o Tab), para poder escribir directo encima sin tener que borrar
+    primero el "0,00" precargado — se usa en vez de ``QDoubleSpinBox`` en
+    todos los formularios, para agilizar la carga."""
+
+    def focusInEvent(self, evento) -> None:
+        super().focusInEvent(evento)
+        self.selectAll()
+
+
+class CampoEntero(QSpinBox):
+    """Igual que ``CampoDecimal`` pero para ``QSpinBox`` (campos enteros:
+    cantidades, años, números de configuración)."""
+
+    def focusInEvent(self, evento) -> None:
+        super().focusInEvent(evento)
+        self.selectAll()
+
+
+class CampoGraduacion(CampoDecimal):
+    """``CampoDecimal`` que siempre muestra el signo (``+1.25``/``-0.50``),
+    como se anota una graduación oftálmica — un valor positivo sin signo se
+    presta a confusión con el cilíndrico, que casi siempre es negativo."""
+
+    def textFromValue(self, valor: float) -> str:
+        texto = super().textFromValue(valor)
+        if valor > 0 and not texto.startswith("+"):
+            texto = f"+{texto}"
+        return texto
+
+    def valueFromText(self, texto: str) -> float:
+        return super().valueFromText(texto.lstrip("+"))
 
 
 def ajustar_columnas(tabla: QTableWidget, ancho_maximo: int = ANCHO_MAXIMO_COLUMNA) -> None:

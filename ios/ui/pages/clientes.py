@@ -11,7 +11,6 @@ from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
     QDialog,
-    QDoubleSpinBox,
     QFormLayout,
     QHBoxLayout,
     QInputDialog,
@@ -33,7 +32,7 @@ from ios.domain.validaciones import cuit_valido
 from ios.reports.formato import formato_moneda
 from ios.services import clientes as servicio_clientes
 from ios.services.cuenta_corriente import estado_de_cuenta_cliente
-from ios.ui.widgets import ajustar_columnas, normalizar
+from ios.ui.widgets import CampoDecimal, ajustar_columnas, normalizar
 
 FILTRO_ACTIVOS = "Activos"
 FILTRO_DADOS_DE_BAJA = "Dados de baja"
@@ -87,7 +86,7 @@ class _DialogoCliente(QDialog):
         self._campo_telefono = QLineEdit()
         self._campo_direccion = QLineEdit()
         self._campo_localidad = QLineEdit()
-        self._campo_descuento = QDoubleSpinBox()
+        self._campo_descuento = CampoDecimal()
         self._campo_descuento.setRange(0, 100)
         self._campo_descuento.setDecimals(2)
         self._campo_descuento.setSuffix(" %")

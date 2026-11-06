@@ -15,3 +15,6 @@ instalador/Output/
 # generados con la base de datos de producción).
 docs/*.xlsx
 /muestra_*.pdf
+
+# Mapa de navegación generado por graphify: no es código del proyecto.
+/graphify-out/

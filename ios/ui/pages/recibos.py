@@ -15,7 +15,6 @@ from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
     QDateEdit,
-    QFileDialog,
     QHBoxLayout,
     QLabel,
     QMessageBox,
@@ -28,6 +27,7 @@ from PySide6.QtWidgets import (
 
 from ios.data import clientes as datos_clientes
 from ios.reports.formato import formato_fecha, formato_moneda
+from ios.reports.pdf_comun import abrir_pdf, ruta_pdf_automatica
 from ios.reports.recibo import generar_pdf_recibo
 from ios.services.listado_recibos import listado_recibos
 from ios.ui.widgets import ajustar_columnas
@@ -170,10 +170,7 @@ class PaginaRecibos(QWidget):
             return
         item_numero = self._tabla.item(fila, COLUMNA_NUMERO)
         recibo_id = item_numero.data(Qt.UserRole)
-        ruta, _ = QFileDialog.getSaveFileName(
-            self, "Guardar recibo", f"Recibo {item_numero.text()}.pdf", "PDF (*.pdf)"
-        )
-        if not ruta:
-            return
+        fecha = self._tabla.item(fila, COLUMNA_FECHA).text().replace("/", "-")
+        ruta = ruta_pdf_automatica(f"Recibo {item_numero.text()} - {fecha}.pdf", subcarpeta="Recibos")
         generar_pdf_recibo(self.conexion, recibo_id, ruta)
-        QMessageBox.information(self, "Listo", "Se exportó el recibo.")
+        abrir_pdf(ruta)
