@@ -26,10 +26,14 @@ def alta_compra(
     monto: Decimal,
     tasa_iva: Decimal | None = None,
     iva: Decimal | None = None,
+    pedido_id: int | None = None,
 ) -> int:
     """``tasa_iva`` por defecto es la de configuración (21%). ``iva`` por
     defecto es el calculado a partir de ``monto`` y ``tasa_iva``; si se pasa
-    un valor distinto del calculado, la compra queda marcada "IVA manual"."""
+    un valor distinto del calculado, la compra queda marcada "IVA manual".
+    ``pedido_id`` vincula esta factura con el pedido a proveedor que la
+    generó (plan de detalle de comprobantes, etapa 5.3: al marcar un pedido
+    recibido, se carga de una la factura asociada)."""
     if datos_proveedores.obtener_proveedor(conexion, proveedor_id) is None:
         raise ValueError(f"No existe el proveedor {proveedor_id}.")
 
@@ -50,7 +54,8 @@ def alta_compra(
         iva_manual = iva != iva_calculado
 
     compra_id = datos.insertar_compra(
-        conexion, proveedor_id, fecha, numero_factura, monto, iva_final, tasa_iva, iva_manual
+        conexion, proveedor_id, fecha, numero_factura, monto, iva_final, tasa_iva, iva_manual,
+        pedido_id=pedido_id,
     )
     conexion.commit()
     return compra_id

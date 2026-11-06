@@ -13,7 +13,6 @@ from PySide6.QtWidgets import (
     QComboBox,
     QDateEdit,
     QDialog,
-    QDoubleSpinBox,
     QFormLayout,
     QHBoxLayout,
     QLabel,
@@ -34,7 +33,7 @@ from ios.data import configuracion as datos_configuracion
 from ios.reports.formato import formato_fecha, formato_moneda
 from ios.services import comprobantes as servicio_comprobantes
 from ios.services.comprobantes import NumeroDuplicadoError
-from ios.ui.widgets import BuscadorCliente, ajustar_columnas
+from ios.ui.widgets import BuscadorCliente, CampoDecimal, ajustar_columnas
 
 ETIQUETAS_ESTADO = {"vigente": "Vigente", "anulado": "Anulado"}
 
@@ -55,12 +54,12 @@ class _DialogoEditarComprobante(QDialog):
         self.campo_numero = QLineEdit(comprobante["numero"])
         self.campo_fecha = QDateEdit(QDate.fromString(comprobante["fecha"], "yyyy-MM-dd"))
         self.campo_fecha.setCalendarPopup(True)
-        self.campo_monto_lista = QDoubleSpinBox()
+        self.campo_monto_lista = CampoDecimal()
         self.campo_monto_lista.setRange(0, 99_999_999)
         self.campo_monto_lista.setDecimals(2)
         self.campo_monto_lista.setValue(float(comprobante["monto_lista"]))
         self.campo_monto_lista.valueChanged.connect(self._recalcular)
-        self.campo_descuento = QDoubleSpinBox()
+        self.campo_descuento = CampoDecimal()
         self.campo_descuento.setRange(0, 100)
         self.campo_descuento.setDecimals(2)
         self.campo_descuento.setSuffix(" %")
@@ -226,6 +225,9 @@ class PaginaComprobantes(QWidget):
         boton_anular = QPushButton("Anular seleccionado")
         boton_anular.clicked.connect(self._anular_seleccionado)
         pie.addWidget(boton_anular)
+        boton_devolucion = QPushButton("Registrar devolución")
+        boton_devolucion.clicked.connect(self._registrar_devolucion_seleccionado)
+        pie.addWidget(boton_devolucion)
         layout_general.addLayout(pie)
 
         self._rango_este_mes()
@@ -354,5 +356,36 @@ class PaginaComprobantes(QWidget):
             servicio_comprobantes.anular_comprobante(self.conexion, comprobante_id)
         except ValueError as error:
             QMessageBox.warning(self, "No se pudo anular", str(error))
+            return
+        self._cargar_tabla()
+
+    def _registrar_devolucion_seleccionado(self) -> None:
+        comprobante_id = self._comprobante_seleccionado()
+        if comprobante_id is None:
+            return
+        respuesta = QMessageBox.question(
+            self, "Registrar devolución",
+            "¿Registrar la devolución de este comprobante? Se anula, no se cobra.",
+        )
+        if respuesta != QMessageBox.Yes:
+            return
+
+        tiene_renglones_de_stock = any(
+            renglon["tipo_cristal_id"] is not None and renglon["pedido_especial_linea_id"] is None
+            for renglon in servicio_comprobantes.listar_detalle_comprobante(self.conexion, comprobante_id)
+        )
+        ya_repuesto = False
+        if tiene_renglones_de_stock:
+            ya_repuesto = QMessageBox.question(
+                self, "¿Ya estaba repuesto?",
+                "¿Ese cristal ya se había vuelto a pedir al proveedor antes de esta devolución? "
+                "Si contestás que sí, no se va a pedir de más la próxima vez que generes la "
+                "reposición de ese cristal y esa graduación.",
+            ) == QMessageBox.Yes
+
+        try:
+            servicio_comprobantes.registrar_devolucion(self.conexion, comprobante_id, ya_repuesto)
+        except ValueError as error:
+            QMessageBox.warning(self, "No se pudo registrar", str(error))
             return
         self._cargar_tabla()

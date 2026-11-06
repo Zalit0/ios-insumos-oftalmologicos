@@ -15,19 +15,25 @@ def insertar_compra(
     iva: Decimal,
     tasa_iva: Decimal,
     iva_manual: bool,
+    pedido_id: int | None = None,
 ) -> int:
     cursor = conexion.execute(
         """
-        INSERT INTO compras (proveedor_id, fecha, numero_factura, monto, iva, tasa_iva, iva_manual)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO compras (proveedor_id, fecha, numero_factura, monto, iva, tasa_iva, iva_manual,
+                              pedido_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """,
-        (proveedor_id, fecha, numero_factura, monto, iva, tasa_iva, int(iva_manual)),
+        (proveedor_id, fecha, numero_factura, monto, iva, tasa_iva, int(iva_manual), pedido_id),
     )
     return cursor.lastrowid
 
 
 def obtener_compra(conexion: sqlite3.Connection, compra_id: int) -> sqlite3.Row | None:
     return conexion.execute("SELECT * FROM compras WHERE id = ?", (compra_id,)).fetchone()
+
+
+def obtener_compra_por_pedido(conexion: sqlite3.Connection, pedido_id: int) -> sqlite3.Row | None:
+    return conexion.execute("SELECT * FROM compras WHERE pedido_id = ?", (pedido_id,)).fetchone()
 
 
 def listar_compras(

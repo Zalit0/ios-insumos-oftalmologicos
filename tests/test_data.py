@@ -1,5 +1,6 @@
 """Pruebas de creación de la base y de las migraciones."""
 
+import sqlite3
 from decimal import Decimal
 from pathlib import Path
 
@@ -26,6 +27,10 @@ TABLAS_DEL_PLAN = {
     "cierres_caja",
     "cierres_caja_detalle",
     "configuracion",
+    "tipos_cristal",
+    "detalle_comprobante",
+    "pedidos_proveedor",
+    "pedido_lineas",
 }
 
 
@@ -65,6 +70,41 @@ def test_abrir_de_nuevo_no_reaplica_migraciones(tmp_path: Path):
         assert clientes == 1
     finally:
         segunda.close()
+
+
+def test_no_respalda_si_no_hay_migraciones_pendientes(tmp_path: Path):
+    ruta = tmp_path / "ios_test.db"
+    conectar(ruta).close()
+
+    conectar(ruta).close()  # ya está al día: no hay nada que pueda romperse
+
+    assert list(tmp_path.glob("ios_test.bak-*.db")) == []
+
+
+def test_respalda_la_base_antes_de_aplicar_una_migracion_pendiente(tmp_path: Path):
+    """Si una migración rompe algo a mitad de camino (corte de luz, disco
+    lleno) en la PC de un cliente, este backup es lo que permite volver
+    atrás sin haber perdido nada — tiene que existir incluso si la
+    migración en sí termina fallando (acá se simula haciéndola fallar a
+    propósito, rebobinando la versión para que se reintente una que ya se
+    había aplicado)."""
+    ruta = tmp_path / "ios_test.db"
+    conexion = conectar(ruta)
+    version_vieja = len(MIGRACIONES) - 1
+    conexion.execute(f"PRAGMA user_version = {version_vieja}")
+    conexion.commit()
+    conexion.close()
+
+    with pytest.raises(sqlite3.OperationalError):
+        conectar(ruta)
+
+    backups = list(tmp_path.glob("ios_test.bak-*.db"))
+    assert len(backups) == 1
+    respaldo = sqlite3.connect(str(backups[0]))
+    try:
+        assert version_actual(respaldo) == version_vieja
+    finally:
+        respaldo.close()
 
 
 def test_tipo_comprobante_rto(conexion):

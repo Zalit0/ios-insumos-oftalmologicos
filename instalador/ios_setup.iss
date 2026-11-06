@@ -12,7 +12,7 @@
 ; que haya copiado el instalador.
 
 #define MyAppName "IOS - Insumos Oftalmológicos Santiago"
-#define MyAppVersion "1.2.2"
+#define MyAppVersion "1.3.0"
 #define MyAppExeName "IOS.exe"
 
 [Setup]

@@ -15,7 +15,6 @@ from PySide6.QtWidgets import (
     QLabel,
     QMessageBox,
     QPushButton,
-    QSpinBox,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
@@ -25,7 +24,7 @@ from PySide6.QtWidgets import (
 from ios.reports.formato import formato_fecha, formato_moneda
 from ios.reports.iva_mes import generar_excel_iva_mes
 from ios.services.iva_mes import detalle_iva_del_mes
-from ios.ui.widgets import ajustar_columnas
+from ios.ui.widgets import CampoEntero, ajustar_columnas
 
 NOMBRES_MESES = [
     "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
@@ -49,7 +48,7 @@ class PaginaIvaMes(QWidget):
         self._campo_mes.setCurrentIndex(hoy.month - 1)
         self._campo_mes.currentIndexChanged.connect(self._cargar)
         encabezado.addWidget(self._campo_mes)
-        self._campo_anio = QSpinBox()
+        self._campo_anio = CampoEntero()
         self._campo_anio.setRange(2000, 2100)
         self._campo_anio.setValue(hoy.year)
         self._campo_anio.valueChanged.connect(self._cargar)

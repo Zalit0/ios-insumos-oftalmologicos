@@ -16,13 +16,13 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QScrollArea,
-    QSpinBox,
     QTabWidget,
     QVBoxLayout,
     QWidget,
 )
 
 from ios.reports.formato import formato_moneda
+from ios.reports.pdf_comun import abrir_pdf, ruta_pdf_automatica
 from ios.reports.resumen_mensual import (
     ETIQUETAS,
     generar_excel_resumen_mensual,
@@ -37,6 +37,7 @@ from ios.services.graficos_resumen_mensual import (
 )
 from ios.services.resumen_mensual import resumen_del_mes, total_disponible_actual
 from ios.ui.graficos import grafico_barras_agrupadas, grafico_barras_horizontales, grafico_linea
+from ios.ui.widgets import CampoEntero
 
 NOMBRES_MESES = [
     "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
@@ -61,7 +62,7 @@ class PaginaResumenMensual(QWidget):
         self._campo_mes.currentIndexChanged.connect(self._actualizar_resumen)
         encabezado.addWidget(self._campo_mes)
 
-        self._campo_anio = QSpinBox()
+        self._campo_anio = CampoEntero()
         self._campo_anio.setRange(2000, 2100)
         self._campo_anio.setValue(hoy.year)
         self._campo_anio.valueChanged.connect(self._actualizar_resumen)
@@ -173,13 +174,9 @@ class PaginaResumenMensual(QWidget):
 
     def _exportar_pdf(self) -> None:
         mes = self._mes_actual()
-        ruta, _ = QFileDialog.getSaveFileName(
-            self, "Exportar resumen mensual", f"Resumen {mes}.pdf", "PDF (*.pdf)"
-        )
-        if not ruta:
-            return
+        ruta = ruta_pdf_automatica(f"Resumen {mes}.pdf", subcarpeta="Resumen mensual")
         generar_pdf_resumen_mensual(self.conexion, mes, ruta)
-        QMessageBox.information(self, "Listo", "Se exportó el resumen mensual.")
+        abrir_pdf(ruta)
 
     def _exportar_excel(self) -> None:
         mes = self._mes_actual()

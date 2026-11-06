@@ -13,7 +13,7 @@ import pytest
 pytest.importorskip("PySide6")
 
 from PySide6.QtCore import QDate
-from PySide6.QtWidgets import QApplication, QFileDialog, QMessageBox
+from PySide6.QtWidgets import QApplication
 
 from ios.data.db import conectar
 from ios.services import clientes as servicio_clientes
@@ -139,10 +139,8 @@ def test_exportar_en_modo_pendientes_llama_al_reporte_de_pendientes(
     pagina = _preparar_pagina_para_exportar(conexion, rto_id, tmp_path)
 
     ruta_salida = tmp_path / "estado.pdf"
-    monkeypatch.setattr(
-        QFileDialog, "getSaveFileName", staticmethod(lambda *a, **k: (str(ruta_salida), ""))
-    )
-    monkeypatch.setattr(QMessageBox, "information", staticmethod(lambda *a, **k: QMessageBox.Ok))
+    monkeypatch.setattr("ios.ui.pages.cuenta_corriente.ruta_pdf_automatica", lambda nombre, subcarpeta=None: ruta_salida)
+    monkeypatch.setattr("ios.ui.pages.cuenta_corriente.abrir_pdf", lambda ruta: None)
 
     llamadas = []
     monkeypatch.setattr(
@@ -164,10 +162,8 @@ def test_exportar_pendientes_con_periodo_activo_pasa_las_fechas(
     pagina = _preparar_pagina_para_exportar(conexion, rto_id, tmp_path)
 
     ruta_salida = tmp_path / "estado.pdf"
-    monkeypatch.setattr(
-        QFileDialog, "getSaveFileName", staticmethod(lambda *a, **k: (str(ruta_salida), ""))
-    )
-    monkeypatch.setattr(QMessageBox, "information", staticmethod(lambda *a, **k: QMessageBox.Ok))
+    monkeypatch.setattr("ios.ui.pages.cuenta_corriente.ruta_pdf_automatica", lambda nombre, subcarpeta=None: ruta_salida)
+    monkeypatch.setattr("ios.ui.pages.cuenta_corriente.abrir_pdf", lambda ruta: None)
 
     llamadas = []
     monkeypatch.setattr(
@@ -189,10 +185,8 @@ def test_exportar_pendientes_en_modo_ver_todo_no_pasa_fechas(
     pagina._ver_todo()
 
     ruta_salida = tmp_path / "estado.pdf"
-    monkeypatch.setattr(
-        QFileDialog, "getSaveFileName", staticmethod(lambda *a, **k: (str(ruta_salida), ""))
-    )
-    monkeypatch.setattr(QMessageBox, "information", staticmethod(lambda *a, **k: QMessageBox.Ok))
+    monkeypatch.setattr("ios.ui.pages.cuenta_corriente.ruta_pdf_automatica", lambda nombre, subcarpeta=None: ruta_salida)
+    monkeypatch.setattr("ios.ui.pages.cuenta_corriente.abrir_pdf", lambda ruta: None)
 
     llamadas = []
     monkeypatch.setattr(
@@ -214,10 +208,8 @@ def test_exportar_en_modo_completo_llama_al_reporte_de_periodo(
     pagina._campo_modo_pdf.setCurrentIndex(indice)
 
     ruta_salida = tmp_path / "estado.pdf"
-    monkeypatch.setattr(
-        QFileDialog, "getSaveFileName", staticmethod(lambda *a, **k: (str(ruta_salida), ""))
-    )
-    monkeypatch.setattr(QMessageBox, "information", staticmethod(lambda *a, **k: QMessageBox.Ok))
+    monkeypatch.setattr("ios.ui.pages.cuenta_corriente.ruta_pdf_automatica", lambda nombre, subcarpeta=None: ruta_salida)
+    monkeypatch.setattr("ios.ui.pages.cuenta_corriente.abrir_pdf", lambda ruta: None)
 
     pagina._exportar_pdf()
 
@@ -232,10 +224,8 @@ def test_exportar_en_modo_historial_llama_al_reporte_de_historial(
     pagina._campo_modo_pdf.setCurrentIndex(indice)
 
     ruta_salida = tmp_path / "estado.pdf"
-    monkeypatch.setattr(
-        QFileDialog, "getSaveFileName", staticmethod(lambda *a, **k: (str(ruta_salida), ""))
-    )
-    monkeypatch.setattr(QMessageBox, "information", staticmethod(lambda *a, **k: QMessageBox.Ok))
+    monkeypatch.setattr("ios.ui.pages.cuenta_corriente.ruta_pdf_automatica", lambda nombre, subcarpeta=None: ruta_salida)
+    monkeypatch.setattr("ios.ui.pages.cuenta_corriente.abrir_pdf", lambda ruta: None)
 
     pagina._exportar_pdf()
 

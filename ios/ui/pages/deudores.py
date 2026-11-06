@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
 
 from ios.reports.deudores import generar_excel_deudores, generar_pdf_deudores
 from ios.reports.formato import formato_fecha, formato_moneda
+from ios.reports.pdf_comun import abrir_pdf, ruta_pdf_automatica
 from ios.services.listado_deudores import listado_deudores
 from ios.ui.widgets import ajustar_columnas
 
@@ -89,13 +90,9 @@ class PaginaDeudores(QWidget):
         ajustar_columnas(self._tabla)
 
     def _exportar_pdf(self) -> None:
-        ruta, _ = QFileDialog.getSaveFileName(
-            self, "Exportar deudores", "Deudores.pdf", "PDF (*.pdf)"
-        )
-        if not ruta:
-            return
+        ruta = ruta_pdf_automatica(f"Deudores - {self._fecha()}.pdf", subcarpeta="Deudores")
         generar_pdf_deudores(self.conexion, self._fecha(), ruta)
-        QMessageBox.information(self, "Listo", "Se exportó el listado de deudores.")
+        abrir_pdf(ruta)
 
     def _exportar_excel(self) -> None:
         ruta, _ = QFileDialog.getSaveFileName(

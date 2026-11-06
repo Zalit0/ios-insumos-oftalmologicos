@@ -23,6 +23,20 @@ def buscar_vigentes_por_tipo_numero(
     ).fetchall()
 
 
+def maximo_numero_comprobante(conexion: sqlite3.Connection, tipo_comprobante_id: int) -> int | None:
+    """Mayor número puramente numérico ya usado para ese tipo (manual o
+    cargado con detalle, vigente o anulado: un número usado no se reemite).
+    Los números no numéricos (de remitos manuales con otro formato) se
+    ignoran, igual que al importar recibos con número no numérico
+    (docs/AJUSTES_V1.1.md, etapa 7)."""
+    fila = conexion.execute(
+        "SELECT MAX(CAST(numero AS INTEGER)) AS maximo FROM comprobantes "
+        "WHERE tipo_comprobante_id = ? AND numero GLOB '[0-9]*' AND numero NOT GLOB '*[^0-9]*'",
+        (tipo_comprobante_id,),
+    ).fetchone()
+    return fila["maximo"]
+
+
 def insertar_comprobante(
     conexion: sqlite3.Connection,
     tipo_comprobante_id: int,
