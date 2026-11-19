@@ -32,6 +32,14 @@ def obtener_pago_proveedor(conexion: sqlite3.Connection, pago_id: int) -> sqlite
     ).fetchone()
 
 
+def actualizar_pago_proveedor(conexion: sqlite3.Connection, pago_id: int, campos: dict) -> None:
+    columnas = ", ".join(f"{columna} = ?" for columna in campos)
+    valores = list(campos.values())
+    conexion.execute(
+        f"UPDATE pagos_proveedor SET {columnas} WHERE id = ?", (*valores, pago_id)
+    )
+
+
 def listar_pagos_proveedor(
     conexion: sqlite3.Connection,
     proveedor_id: int | None = None,

@@ -41,9 +41,10 @@ from ios.ui.widgets import CampoDecimal, ajustar_columnas
 
 COLUMNA_TILDE = 0
 COLUMNA_NUMERO = 1
-COLUMNA_FECHA = 2
-COLUMNA_SALDO = 3
-COLUMNA_MONTO = 4
+COLUMNA_NOMBRE = 2
+COLUMNA_FECHA = 3
+COLUMNA_SALDO = 4
+COLUMNA_MONTO = 5
 
 
 class _FilaFormaPago(QWidget):
@@ -136,8 +137,10 @@ class PaginaCobranzas(QWidget):
         fila_remitos.addWidget(boton_seleccionar_todos)
         layout_general.addLayout(fila_remitos)
 
-        self._tabla = QTableWidget(0, 5)
-        self._tabla.setHorizontalHeaderLabels(["Cubre", "Remito", "Fecha", "Saldo", "Monto a aplicar"])
+        self._tabla = QTableWidget(0, 6)
+        self._tabla.setHorizontalHeaderLabels(
+            ["Cubre", "Remito", "Nombre", "Fecha", "Saldo", "Monto a aplicar"]
+        )
         self._tabla.verticalHeader().setVisible(False)
         self._tabla.itemChanged.connect(self._al_cambiar_item_tabla)
         layout_general.addWidget(self._tabla, stretch=1)
@@ -218,6 +221,9 @@ class PaginaCobranzas(QWidget):
             self._actualizar_resumen()
             return
 
+        cliente = datos_clientes.obtener_cliente(self.conexion, cliente_id)
+        self._tabla.setColumnHidden(COLUMNA_NOMBRE, not cliente["es_particular"])
+
         pendientes = []
         for comprobante in datos_comprobantes.listar_comprobantes(
             self.conexion, cliente_id=cliente_id, estado="vigente"
@@ -235,6 +241,9 @@ class PaginaCobranzas(QWidget):
             item_tilde.setData(Qt.UserRole, comprobante["id"])
             self._tabla.setItem(fila, COLUMNA_TILDE, item_tilde)
             self._tabla.setItem(fila, COLUMNA_NUMERO, QTableWidgetItem(comprobante["numero"]))
+            self._tabla.setItem(
+                fila, COLUMNA_NOMBRE, QTableWidgetItem(comprobante["nombre_particular"] or "")
+            )
             self._tabla.setItem(fila, COLUMNA_FECHA, QTableWidgetItem(formato_fecha(comprobante["fecha"])))
             self._tabla.setItem(fila, COLUMNA_SALDO, QTableWidgetItem(formato_moneda(saldo)))
 

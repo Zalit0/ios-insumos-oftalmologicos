@@ -24,7 +24,7 @@ from ios.services import clientes as servicio_clientes
 from ios.services import comprobantes as servicio_comprobantes
 from ios.services.caja import abrir_caja
 from ios.ui.pages.caja_diaria import DialogoAbrirCaja
-from ios.ui.pages.cobranzas import COLUMNA_MONTO, PaginaCobranzas
+from ios.ui.pages.cobranzas import COLUMNA_MONTO, COLUMNA_NOMBRE, PaginaCobranzas
 
 FECHA_HOY = date.today().isoformat()
 
@@ -67,6 +67,31 @@ def del_pilar(conexion):
 @pytest.fixture
 def caja_abierta_hoy(conexion):
     abrir_caja(conexion, FECHA_HOY)
+
+
+def test_columna_nombre_solo_se_ve_y_llena_para_particulares(app, conexion, del_pilar):
+    cliente_id, _comprobante_ids = del_pilar
+    particulares_id = conexion.execute(
+        "SELECT id FROM clientes WHERE nombre = 'Particulares'"
+    ).fetchone()["id"]
+    sucursal_id = conexion.execute(
+        "SELECT id FROM sucursales WHERE cliente_id = ?", (particulares_id,)
+    ).fetchone()["id"]
+    rto_id = conexion.execute(
+        "SELECT id FROM tipos_comprobante WHERE abreviatura = 'RTO'"
+    ).fetchone()["id"]
+    servicio_comprobantes.alta_comprobante(
+        conexion, rto_id, "999", "2024-03-10", particulares_id, sucursal_id,
+        Decimal("1000"), nombre_particular="Juana Pérez",
+    )
+    pagina = PaginaCobranzas(conexion)
+
+    pagina._campo_cliente.setCurrentIndex(pagina._campo_cliente.findData(cliente_id))
+    assert pagina._tabla.isColumnHidden(COLUMNA_NOMBRE)
+
+    pagina._campo_cliente.setCurrentIndex(pagina._campo_cliente.findData(particulares_id))
+    assert not pagina._tabla.isColumnHidden(COLUMNA_NOMBRE)
+    assert pagina._tabla.item(0, COLUMNA_NOMBRE).text() == "Juana Pérez"
 
 
 def test_tildar_y_confirmar_cobranza_con_efectivo_y_cheque(app, conexion, del_pilar, caja_abierta_hoy):
@@ -208,7 +233,7 @@ def test_aplicar_saldo_a_favor_sin_caja(app, conexion, del_pilar, caja_abierta_h
     movimientos_antes = conexion.execute("SELECT COUNT(*) AS n FROM movimientos_caja").fetchone()["n"]
 
     pagina._tabla.item(0, 0).setCheckState(Qt.Checked)  # el remito 2, ahora primero en la lista
-    pagina._tabla.cellWidget(0, 4).setValue(6932.16)
+    pagina._tabla.cellWidget(0, 5).setValue(6932.16)
     pagina._aplicar_saldo_a_favor()
 
     movimientos_despues = conexion.execute("SELECT COUNT(*) AS n FROM movimientos_caja").fetchone()["n"]

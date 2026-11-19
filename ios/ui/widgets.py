@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+import re
 import sqlite3
 
-from PySide6.QtCore import QStringListModel, Qt, Signal
+from PySide6.QtCore import QLocale, QStringListModel, Qt, Signal
 from PySide6.QtWidgets import (
     QCompleter,
     QDoubleSpinBox,
@@ -25,16 +26,53 @@ __all__ = [
 
 ANCHO_MAXIMO_COLUMNA = 320
 
+# Punto de miles, coma decimal — la convención del negocio (la misma que
+# usa ``formato_moneda``) fija de antemano, para que no dependa de la
+# configuración regional de Windows de la PC donde corra.
+_LOCALE_MONEDA = QLocale(QLocale.Spanish, QLocale.Argentina)
+
 
 class CampoDecimal(QDoubleSpinBox):
     """``QDoubleSpinBox`` que selecciona todo su valor al recibir el foco
     (clic o Tab), para poder escribir directo encima sin tener que borrar
     primero el "0,00" precargado — se usa en vez de ``QDoubleSpinBox`` en
-    todos los formularios, para agilizar la carga."""
+    todos los formularios, para agilizar la carga.
+
+    Al tipear acepta la coma y el punto como separador decimal, sea cual
+    sea el que está configurado: antes, si la configuración regional de
+    Windows esperaba coma y alguien tipeaba el monto con punto (como un
+    pago a un proveedor cargado así), Qt lo interpretaba como separador
+    de miles en vez de decimal y el monto quedaba multiplicado por 100
+    (de miles pasaba a millones). Se toma como separador decimal el
+    último punto o coma que aparece en lo tipeado, y el resto se descarta
+    como separador de miles — así da lo mismo con cuál de los dos se
+    tipeó. La visualización (mientras no se está editando) siempre usa
+    la misma convención, independiente de Windows."""
+
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.setLocale(_LOCALE_MONEDA)
 
     def focusInEvent(self, evento) -> None:
         super().focusInEvent(evento)
         self.selectAll()
+
+    def valueFromText(self, texto: str) -> float:
+        texto = texto.strip()
+        if not texto:
+            return 0.0
+        negativo = texto.startswith("-")
+        texto = re.sub(r"[^0-9.,]", "", texto)
+        if not texto:
+            return 0.0
+        ultimo_separador = max(texto.rfind("."), texto.rfind(","))
+        if ultimo_separador == -1:
+            valor = float(texto)
+        else:
+            parte_entera = re.sub(r"[.,]", "", texto[:ultimo_separador]) or "0"
+            parte_decimal = texto[ultimo_separador + 1:] or "0"
+            valor = float(f"{parte_entera}.{parte_decimal}")
+        return -valor if negativo else valor
 
 
 class CampoEntero(QSpinBox):

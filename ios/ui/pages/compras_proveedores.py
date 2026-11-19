@@ -5,12 +5,14 @@ con IVA y registro de pagos a proveedores, que generan el egreso de caja
 from __future__ import annotations
 
 import sqlite3
+from datetime import date
 from decimal import Decimal
 
-from PySide6.QtCore import QDate
+from PySide6.QtCore import QDate, Qt
 from PySide6.QtWidgets import (
     QComboBox,
     QDateEdit,
+    QDialog,
     QFormLayout,
     QGroupBox,
     QHBoxLayout,
@@ -38,6 +40,98 @@ from ios.services import proveedores as servicio_proveedores
 from ios.ui.widgets import CampoDecimal, ajustar_columnas
 
 TASAS_IVA_COMPRA = [("21%", Decimal("21")), ("10,5%", Decimal("10.5")), ("0%", Decimal("0"))]
+
+
+class _DialogoEditarPago(QDialog):
+    """Corrige un pago a proveedor ya cargado (fecha, monto, forma de
+    pago, cheque entregado y referencia) -- pensado para arreglar un
+    monto mal tipeado sin tener que anular nada a mano."""
+
+    def __init__(self, conexion: sqlite3.Connection, pago: sqlite3.Row, parent=None) -> None:
+        super().__init__(parent)
+        self.conexion = conexion
+        self.pago_id = pago["id"]
+        self.setWindowTitle("Editar pago a proveedor")
+
+        formulario = QFormLayout(self)
+        self.campo_fecha = QDateEdit(QDate.fromString(pago["fecha"], "yyyy-MM-dd"))
+        self.campo_fecha.setCalendarPopup(True)
+        formulario.addRow("Fecha", self.campo_fecha)
+
+        self.campo_monto = CampoDecimal()
+        self.campo_monto.setRange(0, 99_999_999)
+        self.campo_monto.setDecimals(2)
+        self.campo_monto.setValue(float(pago["monto"]))
+        formulario.addRow("Monto", self.campo_monto)
+
+        self.campo_forma = QComboBox()
+        self._formas_pago_tipos: dict[int, str] = {}
+        for forma in datos_formas_pago.listar_formas_pago(conexion):
+            self.campo_forma.addItem(forma["nombre"], forma["id"])
+            self._formas_pago_tipos[forma["id"]] = forma["tipo"]
+        self.campo_forma.setCurrentIndex(self.campo_forma.findData(pago["forma_pago_id"]))
+        self.campo_forma.currentIndexChanged.connect(self._actualizar_combo_cheques)
+        formulario.addRow("Forma de pago", self.campo_forma)
+
+        self.campo_cheque = QComboBox()
+        self._cheque_original_id = pago["cheque_entregado_id"]
+        formulario.addRow("Cheque en cartera", self.campo_cheque)
+
+        self.campo_referencia = QLineEdit(pago["referencia"] or "")
+        formulario.addRow("Referencia", self.campo_referencia)
+
+        pie = QHBoxLayout()
+        boton_cancelar = QPushButton("Cancelar")
+        boton_cancelar.clicked.connect(self.reject)
+        pie.addWidget(boton_cancelar)
+        boton_guardar = QPushButton("Guardar corrección")
+        boton_guardar.clicked.connect(self._guardar)
+        pie.addWidget(boton_guardar)
+        formulario.addRow(pie)
+
+        self._actualizar_combo_cheques()
+
+    def _actualizar_combo_cheques(self) -> None:
+        forma_id = self.campo_forma.currentData()
+        es_cheque = self._formas_pago_tipos.get(forma_id) == "cheque"
+        self.campo_cheque.setEnabled(es_cheque)
+        self.campo_cheque.clear()
+        self.campo_cheque.addItem("(no usar cheque en cartera)", None)
+        if not es_cheque:
+            return
+
+        if self._cheque_original_id is not None:
+            cheque_original = datos_cheques.obtener_cheque(self.conexion, self._cheque_original_id)
+            if cheque_original is not None and cheque_original["estado"] != "en_cartera":
+                etiqueta = (
+                    f"Nº {cheque_original['numero']} · {cheque_original['banco'] or '-'} · "
+                    f"{formato_moneda(cheque_original['monto'])} (el que ya tiene este pago)"
+                )
+                self.campo_cheque.addItem(etiqueta, cheque_original["id"])
+
+        for cheque in datos_cheques.listar_cheques_en_cartera(self.conexion):
+            etiqueta = f"Nº {cheque['numero']} · {cheque['banco'] or '-'} · {formato_moneda(cheque['monto'])}"
+            self.campo_cheque.addItem(etiqueta, cheque["id"])
+
+        indice = self.campo_cheque.findData(self._cheque_original_id)
+        self.campo_cheque.setCurrentIndex(max(indice, 0))
+
+    def _guardar(self) -> None:
+        try:
+            servicio_pagos.editar_pago_proveedor(
+                self.conexion,
+                self.pago_id,
+                fecha_hoy=date.today().isoformat(),
+                fecha=self.campo_fecha.date().toString("yyyy-MM-dd"),
+                monto=Decimal(str(self.campo_monto.value())),
+                forma_pago_id=self.campo_forma.currentData(),
+                cheque_entregado_id=self.campo_cheque.currentData(),
+                referencia=self.campo_referencia.text().strip() or None,
+            )
+        except ValueError as error:
+            QMessageBox.warning(self, "No se pudo guardar", str(error))
+            return
+        self.accept()
 
 
 class PaginaComprasProveedores(QWidget):
@@ -253,7 +347,11 @@ class PaginaComprasProveedores(QWidget):
         self._tabla_pagos.setHorizontalHeaderLabels(["Proveedor", "Fecha", "Monto", "Forma de pago"])
         self._tabla_pagos.verticalHeader().setVisible(False)
         self._tabla_pagos.setEditTriggers(QTableWidget.NoEditTriggers)
+        self._tabla_pagos.setSelectionBehavior(QTableWidget.SelectRows)
         columna_izquierda.addWidget(self._tabla_pagos)
+        boton_editar_pago = QPushButton("Editar pago seleccionado")
+        boton_editar_pago.clicked.connect(self._editar_pago_seleccionado)
+        columna_izquierda.addWidget(boton_editar_pago)
         layout.addLayout(columna_izquierda, stretch=2)
 
         grupo = QGroupBox("Nuevo pago")
@@ -316,11 +414,25 @@ class PaginaComprasProveedores(QWidget):
             forma = self.conexion.execute(
                 "SELECT nombre FROM formas_pago WHERE id = ?", (pago["forma_pago_id"],)
             ).fetchone()["nombre"]
-            self._tabla_pagos.setItem(fila, 0, QTableWidgetItem(proveedor["nombre"]))
+            item_proveedor = QTableWidgetItem(proveedor["nombre"])
+            item_proveedor.setData(Qt.UserRole, pago["id"])
+            self._tabla_pagos.setItem(fila, 0, item_proveedor)
             self._tabla_pagos.setItem(fila, 1, QTableWidgetItem(formato_fecha(pago["fecha"])))
             self._tabla_pagos.setItem(fila, 2, QTableWidgetItem(formato_moneda(pago["monto"])))
             self._tabla_pagos.setItem(fila, 3, QTableWidgetItem(forma))
         ajustar_columnas(self._tabla_pagos)
+
+    def _editar_pago_seleccionado(self) -> None:
+        fila = self._tabla_pagos.currentRow()
+        if fila < 0:
+            QMessageBox.warning(self, "Nada seleccionado", "Elegí un pago de la lista.")
+            return
+        pago_id = self._tabla_pagos.item(fila, 0).data(Qt.UserRole)
+        pago = datos_pagos.obtener_pago_proveedor(self.conexion, pago_id)
+        dialogo = _DialogoEditarPago(self.conexion, pago, self)
+        if dialogo.exec() == QDialog.Accepted:
+            self._actualizar_combo_cheques()
+            self._cargar_pagos()
 
     def _registrar_pago(self) -> None:
         proveedor_id = self._campo_pago_proveedor.currentData()

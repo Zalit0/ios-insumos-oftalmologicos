@@ -550,5 +550,5 @@ def test_campo_esferico_muestra_el_signo_positivo(app, conexion):
     pagina.campo_esferico_detalle.setValue(1.25)
     pagina.campo_cilindrico_detalle.setValue(-0.50)
 
-    assert pagina.campo_esferico_detalle.text() == "+1.25"
-    assert pagina.campo_cilindrico_detalle.text() == "-0.50"
+    assert pagina.campo_esferico_detalle.text() == "+1,25"
+    assert pagina.campo_cilindrico_detalle.text() == "-0,50"
