@@ -91,6 +91,20 @@ def listar_recibo_pagos(conexion: sqlite3.Connection, recibo_id: int) -> list[sq
     ).fetchall()
 
 
+def obtener_recibo_pago(conexion: sqlite3.Connection, recibo_pago_id: int) -> sqlite3.Row | None:
+    return conexion.execute(
+        "SELECT * FROM recibo_pagos WHERE id = ?", (recibo_pago_id,)
+    ).fetchone()
+
+
+def actualizar_recibo_pago(conexion: sqlite3.Connection, recibo_pago_id: int, campos: dict) -> None:
+    columnas = ", ".join(f"{columna} = ?" for columna in campos)
+    valores = list(campos.values())
+    conexion.execute(
+        f"UPDATE recibo_pagos SET {columnas} WHERE id = ?", (*valores, recibo_pago_id)
+    )
+
+
 def insertar_aplicacion_pago(
     conexion: sqlite3.Connection, recibo_id: int, comprobante_id: int, monto_aplicado: Decimal
 ) -> int:

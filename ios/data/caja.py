@@ -42,6 +42,12 @@ def insertar_movimiento(
     return cursor.lastrowid
 
 
+def obtener_movimiento(conexion: sqlite3.Connection, movimiento_id: int) -> sqlite3.Row | None:
+    return conexion.execute(
+        "SELECT * FROM movimientos_caja WHERE id = ?", (movimiento_id,)
+    ).fetchone()
+
+
 def actualizar_movimiento_relacionado(
     conexion: sqlite3.Connection, movimiento_id: int, movimiento_relacionado_id: int
 ) -> None:

@@ -24,6 +24,7 @@ from ios.data.esquema import (
     MIGRACION_11_ESQUEMA,
     MIGRACION_12_ESQUEMA,
     MIGRACION_13_ESQUEMA,
+    MIGRACION_14_ESQUEMA,
 )
 
 # Lista ordenada de migraciones: la posición N (1-based) es la versión N.
@@ -43,6 +44,7 @@ MIGRACIONES: list[str] = [
     MIGRACION_11_ESQUEMA,
     MIGRACION_12_ESQUEMA,
     MIGRACION_13_ESQUEMA,
+    MIGRACION_14_ESQUEMA,
 ]
 
 

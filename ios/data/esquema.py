@@ -455,3 +455,13 @@ PRAGMA foreign_keys = ON;
 MIGRACION_13_ESQUEMA = """
 ALTER TABLE compras ADD COLUMN pedido_id INTEGER REFERENCES pedidos_proveedor (id);
 """
+
+# Vincula cada línea de forma de pago de un recibo con el movimiento de
+# caja que generó, para poder corregir la forma de pago (o el monto) de
+# una línea puntual más adelante sin ambigüedad -- un recibo puede tener
+# más de una línea con el mismo concepto en movimientos_caja (todas dicen
+# "Recibo N"), así que sin este vínculo no hay forma de saber cuál
+# movimiento corresponde a cuál línea una vez que hay más de una.
+MIGRACION_14_ESQUEMA = """
+ALTER TABLE recibo_pagos ADD COLUMN movimiento_caja_id INTEGER REFERENCES movimientos_caja (id);
+"""

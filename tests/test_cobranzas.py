@@ -20,6 +20,7 @@ from ios.services.cobranzas import (
     anular_recibo,
     aplicar_saldo_a_favor,
     asentar_cobranza,
+    editar_forma_pago_recibo_pago,
 )
 
 
@@ -247,6 +248,114 @@ def test_no_se_puede_anular_dos_veces(conexion, formas_pago, del_pilar):
 
     with pytest.raises(ValueError):
         anular_recibo(conexion, recibo_id, "2024-03-22")
+
+
+def _total_disponible(conexion, forma_pago_id: int) -> Decimal:
+    movimientos = conexion.execute(
+        "SELECT tipo, monto FROM movimientos_caja WHERE forma_pago_id = ?", (forma_pago_id,)
+    ).fetchall()
+    total = Decimal(0)
+    for movimiento in movimientos:
+        total += movimiento["monto"] if movimiento["tipo"] == "ingreso" else -movimiento["monto"]
+    return total
+
+
+def test_editar_forma_de_pago_corrige_la_caja(conexion, formas_pago, del_pilar):
+    """El bug real: cargaron un cobro como Efectivo cuando el cliente
+    había transferido, y la caja de efectivo no cerraba."""
+    cliente_id, comprobante_ids = del_pilar
+    recibo_id = asentar_cobranza(
+        conexion, cliente_id, "2024-03-20",
+        pagos=[Pago(formas_pago["Efectivo"], Decimal("1000"))],
+        aplicaciones=[AplicacionARemito(comprobante_ids[0], Decimal("1000"))],
+    )
+    recibo_pago_id = datos_recibos.listar_recibo_pagos(conexion, recibo_id)[0]["id"]
+
+    editar_forma_pago_recibo_pago(
+        conexion, recibo_pago_id, fecha_hoy="2024-03-21", forma_pago_id=formas_pago["Transferencia"],
+    )
+
+    assert _total_disponible(conexion, formas_pago["Efectivo"]) == Decimal("0")
+    assert _total_disponible(conexion, formas_pago["Transferencia"]) == Decimal("1000")
+    assert datos_recibos.obtener_recibo_pago(conexion, recibo_pago_id)["forma_pago_id"] == (
+        formas_pago["Transferencia"]
+    )
+
+
+def test_corregir_dos_veces_no_duplica_el_movimiento_anterior(conexion, formas_pago, del_pilar):
+    cliente_id, comprobante_ids = del_pilar
+    recibo_id = asentar_cobranza(
+        conexion, cliente_id, "2024-03-20",
+        pagos=[Pago(formas_pago["Efectivo"], Decimal("1000"))],
+        aplicaciones=[AplicacionARemito(comprobante_ids[0], Decimal("1000"))],
+    )
+    recibo_pago_id = datos_recibos.listar_recibo_pagos(conexion, recibo_id)[0]["id"]
+
+    editar_forma_pago_recibo_pago(
+        conexion, recibo_pago_id, fecha_hoy="2024-03-21", forma_pago_id=formas_pago["Transferencia"],
+    )
+    editar_forma_pago_recibo_pago(
+        conexion, recibo_pago_id, fecha_hoy="2024-03-22", monto=Decimal("1200"),
+    )
+
+    assert _total_disponible(conexion, formas_pago["Transferencia"]) == Decimal("1200")
+
+
+def test_recibo_con_dos_lineas_corrige_solo_la_elegida(conexion, formas_pago, del_pilar):
+    cliente_id, comprobante_ids = del_pilar
+    recibo_id = asentar_cobranza(
+        conexion, cliente_id, "2024-03-20",
+        pagos=[
+            Pago(formas_pago["Efectivo"], Decimal("600")),
+            Pago(formas_pago["Transferencia"], Decimal("400")),
+        ],
+        aplicaciones=[AplicacionARemito(comprobante_ids[0], Decimal("1000"))],
+    )
+    lineas = datos_recibos.listar_recibo_pagos(conexion, recibo_id)
+    linea_efectivo = next(l for l in lineas if l["forma_pago_id"] == formas_pago["Efectivo"])
+
+    editar_forma_pago_recibo_pago(
+        conexion, linea_efectivo["id"], fecha_hoy="2024-03-21", monto=Decimal("650"),
+    )
+
+    assert _total_disponible(conexion, formas_pago["Efectivo"]) == Decimal("650")
+    assert _total_disponible(conexion, formas_pago["Transferencia"]) == Decimal("400")
+
+
+def test_no_se_puede_cambiar_desde_o_hacia_cheque(conexion, formas_pago, del_pilar):
+    cliente_id, comprobante_ids = del_pilar
+    recibo_id = asentar_cobranza(
+        conexion, cliente_id, "2024-03-20",
+        pagos=[Pago(formas_pago["Efectivo"], Decimal("1000"))],
+        aplicaciones=[AplicacionARemito(comprobante_ids[0], Decimal("1000"))],
+    )
+    recibo_pago_id = datos_recibos.listar_recibo_pagos(conexion, recibo_id)[0]["id"]
+
+    with pytest.raises(ValueError):
+        editar_forma_pago_recibo_pago(
+            conexion, recibo_pago_id, fecha_hoy="2024-03-21", forma_pago_id=formas_pago["Cheque"],
+        )
+
+
+def test_no_se_puede_corregir_una_linea_de_un_recibo_anulado(conexion, formas_pago, del_pilar):
+    cliente_id, comprobante_ids = del_pilar
+    recibo_id = asentar_cobranza(
+        conexion, cliente_id, "2024-03-20",
+        pagos=[Pago(formas_pago["Efectivo"], Decimal("1000"))],
+        aplicaciones=[AplicacionARemito(comprobante_ids[0], Decimal("1000"))],
+    )
+    recibo_pago_id = datos_recibos.listar_recibo_pagos(conexion, recibo_id)[0]["id"]
+    anular_recibo(conexion, recibo_id, "2024-03-21")
+
+    with pytest.raises(ValueError):
+        editar_forma_pago_recibo_pago(
+            conexion, recibo_pago_id, fecha_hoy="2024-03-22", forma_pago_id=formas_pago["Transferencia"],
+        )
+
+
+def test_editar_una_linea_inexistente_falla(conexion):
+    with pytest.raises(ValueError):
+        editar_forma_pago_recibo_pago(conexion, 999, fecha_hoy="2024-03-21", monto=Decimal("1"))
 
 
 def test_recibo_en_efectivo_suma_a_la_caja_del_dia(conexion, formas_pago, del_pilar):

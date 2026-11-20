@@ -11,6 +11,12 @@ def obtener_forma_pago_por_nombre(conexion: sqlite3.Connection, nombre: str) -> 
     ).fetchone()
 
 
+def obtener_forma_pago(conexion: sqlite3.Connection, forma_pago_id: int) -> sqlite3.Row | None:
+    return conexion.execute(
+        "SELECT * FROM formas_pago WHERE id = ?", (forma_pago_id,)
+    ).fetchone()
+
+
 def insertar_forma_pago(conexion: sqlite3.Connection, nombre: str, tipo: str) -> int:
     cursor = conexion.execute(
         "INSERT INTO formas_pago (nombre, tipo, activo) VALUES (?, ?, 1)", (nombre, tipo)

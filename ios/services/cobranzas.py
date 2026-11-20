@@ -18,6 +18,7 @@ from ios.data import caja as datos_caja
 from ios.data import cheques as datos_cheques
 from ios.data import cierres_caja as datos_cierres
 from ios.data import comprobantes as datos_comprobantes
+from ios.data import formas_pago as datos_formas_pago
 from ios.data import recibos as datos
 from ios.domain.calculos import calcular_saldo_comprobante
 
@@ -113,10 +114,12 @@ def asentar_cobranza(
                 recibo_origen_id=recibo_id,
             )
 
-        datos.insertar_recibo_pago(conexion, recibo_id, pago.forma_pago_id, pago.monto, cheque_id)
+        recibo_pago_id = datos.insertar_recibo_pago(
+            conexion, recibo_id, pago.forma_pago_id, pago.monto, cheque_id
+        )
 
         if origen == "manual":
-            datos_caja.insertar_movimiento(
+            movimiento_id = datos_caja.insertar_movimiento(
                 conexion,
                 fecha_hora=fecha_movimiento,
                 tipo="ingreso",
@@ -125,6 +128,9 @@ def asentar_cobranza(
                 origen="recibo",
                 concepto=concepto,
                 nota=nota_movimiento,
+            )
+            datos.actualizar_recibo_pago(
+                conexion, recibo_pago_id, {"movimiento_caja_id": movimiento_id}
             )
 
     for aplicacion in aplicaciones:
@@ -215,4 +221,105 @@ def anular_recibo(conexion: sqlite3.Connection, recibo_id: int, fecha_anulacion:
         )
 
     datos.marcar_estado_recibo(conexion, recibo_id, "anulado")
+    conexion.commit()
+
+
+def editar_forma_pago_recibo_pago(
+    conexion: sqlite3.Connection,
+    recibo_pago_id: int,
+    fecha_hoy: str,
+    forma_pago_id: int | None = None,
+    monto: Decimal | None = None,
+) -> None:
+    """Corrige la forma de pago (y, si hace falta, el monto) de una línea
+    de un recibo ya asentado — por ejemplo, si quedó cargada como
+    "Efectivo" cuando en realidad era "Transferencia" y por eso no cierra
+    la caja. No se puede pasar una línea a o desde "Cheque" con esta
+    corrección: un cheque tiene datos propios (número, banco, fecha de
+    cobro) que esto no junta — para eso hay que anular el recibo y
+    volver a cargarlo. Si cambia la forma de pago o el monto, revierte el
+    movimiento de caja original y postea el corregido, siempre en la
+    caja de ``fecha_hoy`` (nunca en la del día original, que puede estar
+    cerrada), igual que al anular un recibo."""
+    recibo_pago = datos.obtener_recibo_pago(conexion, recibo_pago_id)
+    if recibo_pago is None:
+        raise ValueError(f"No existe la línea de pago {recibo_pago_id}.")
+
+    recibo = datos.obtener_recibo(conexion, recibo_pago["recibo_id"])
+    if recibo["estado"] != "vigente":
+        raise ValueError(f"El recibo {recibo['numero']} está anulado: no se puede corregir.")
+
+    forma_pago_nueva = forma_pago_id if forma_pago_id is not None else recibo_pago["forma_pago_id"]
+    monto_nuevo = monto if monto is not None else recibo_pago["monto"]
+
+    forma_vieja = datos_formas_pago.obtener_forma_pago(conexion, recibo_pago["forma_pago_id"])
+    forma_nueva = datos_formas_pago.obtener_forma_pago(conexion, forma_pago_nueva)
+    if forma_nueva is None:
+        raise ValueError(f"No existe la forma de pago {forma_pago_nueva}.")
+    if forma_vieja["tipo"] == "cheque" or forma_nueva["tipo"] == "cheque":
+        raise ValueError(
+            "No se puede cambiar una línea desde o hacia Cheque con esta corrección "
+            "(un cheque tiene sus propios datos). Anulá el recibo y volvé a cargarlo."
+        )
+
+    cambia = forma_pago_nueva != recibo_pago["forma_pago_id"] or monto_nuevo != recibo_pago["monto"]
+    if not cambia:
+        return
+
+    movimiento_nuevo_id = recibo_pago["movimiento_caja_id"]
+    if recibo["origen"] == "manual":
+        movimiento_original = None
+        if recibo_pago["movimiento_caja_id"] is not None:
+            movimiento_original = datos_caja.obtener_movimiento(
+                conexion, recibo_pago["movimiento_caja_id"]
+            )
+        if movimiento_original is None:
+            # Línea de un recibo cargado antes de que se empezara a guardar
+            # este vínculo: se busca por concepto + forma + monto. Si el
+            # recibo tiene más de una línea con la misma forma y el mismo
+            # monto, puede no ser exactamente la correcta.
+            concepto = f"Recibo {recibo['numero']}"
+            candidatos = [
+                movimiento
+                for movimiento in datos_caja.listar_movimientos_por_concepto(conexion, concepto, "recibo")
+                if movimiento["forma_pago_id"] == recibo_pago["forma_pago_id"]
+                and movimiento["monto"] == recibo_pago["monto"]
+            ]
+            movimiento_original = candidatos[0] if candidatos else None
+        if movimiento_original is None:
+            raise ValueError(
+                f"No se encontró el movimiento de caja de esta línea del recibo "
+                f"{recibo['numero']}: no se puede corregir con seguridad."
+            )
+
+        datos_caja.insertar_movimiento(
+            conexion,
+            fecha_hora=fecha_hoy,
+            tipo="egreso",
+            forma_pago_id=movimiento_original["forma_pago_id"],
+            monto=movimiento_original["monto"],
+            origen="anulacion",
+            concepto=f"Corrección recibo {recibo['numero']}: reversión del valor anterior",
+            movimiento_relacionado_id=movimiento_original["id"],
+        )
+        movimiento_nuevo_id = datos_caja.insertar_movimiento(
+            conexion,
+            fecha_hora=fecha_hoy,
+            tipo="ingreso",
+            forma_pago_id=forma_pago_nueva,
+            monto=monto_nuevo,
+            origen="recibo",
+            concepto=f"Recibo {recibo['numero']}",
+            movimiento_relacionado_id=movimiento_original["id"],
+        )
+
+    datos.actualizar_recibo_pago(
+        conexion,
+        recibo_pago_id,
+        {
+            "forma_pago_id": forma_pago_nueva,
+            "monto": monto_nuevo,
+            "movimiento_caja_id": movimiento_nuevo_id,
+        },
+    )
     conexion.commit()
